@@ -59,6 +59,17 @@ struct LiveWindowTests {
         try await render(
             EntryEditor(store: store, request: EntryEditorRequest(entry: store.workspace.entries[0])),
             name: "session-editor", size: NSSize(width: 580, height: 500))
+        try await render(
+            MonthCalendar(selection: .now, calendar: store.calendar, latest: .now) { _ in }.padding(12),
+            name: "date-picker", size: NSSize(width: 260, height: 300))
+        try await render(
+            ComboboxList(
+                options: Locale.commonISOCurrencyCodes.sorted().prefix(12).map {
+                    ComboboxOption(id: $0, title: $0, detail: Locale.current.localizedString(forCurrencyCode: $0))
+                },
+                selection: "EUR", searchPrompt: "Code ou nom de devise…", create: nil,
+                onPick: { _ in }, onCreate: { _ in }, onClose: {}),
+            name: "combobox", size: NSSize(width: 300, height: 340))
         store.showLauncher = true
         try await render(ContentView(store: store), name: "command-palette", size: windowSize)
         let reportURL = directory.appendingPathComponent("activity-report.pdf")

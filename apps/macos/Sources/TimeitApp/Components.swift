@@ -197,57 +197,24 @@ struct FieldRow<Content: View>: View {
     }
 }
 
-// MARK: - Select fields
+// MARK: - Selects
 
-/// An input-shaped button showing the current choice, opening a menu of options.
-struct SelectField<Options: View>: View {
-    let title: String
-    var placeholder = false
-    var dot: Color? = nil
-    var large = false
-    @ViewBuilder var options: Options
-    var body: some View {
-        Menu {
-            options
-        } label: {
-            HStack(spacing: 8) {
-                if let dot { Circle().fill(dot).frame(width: 8, height: 8) }
-                Text(title).lineLimit(1).foregroundStyle(placeholder ? .secondary : .primary)
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.up.chevron.down").imageScale(.small).foregroundStyle(.secondary)
-            }
-            .inputFrame(large: large)
-            .contentShape(Rectangle())
-        }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
-        .accessibilityValue(title)
-    }
-}
-
-/// Picks a project, grouped by client, showing the project's color.
+/// Picks a project with search, grouped by client, showing the project's color.
 struct ProjectMenu: View {
     let store: AppStore
     @Binding var selection: UUID?
     var includeArchived: UUID? = nil
     var large = false
     var body: some View {
-        let project = selection.flatMap(store.workspace.project)
-        SelectField(
-            title: project?.name ?? "Choisir un projet", placeholder: project == nil,
-            dot: project?.color.tint ?? .secondary, large: large
-        ) {
-            ForEach(store.workspace.clients) { client in
-                let projects = store.workspace.projects.filter {
-                    $0.clientID == client.id && (!$0.archived || $0.id == includeArchived)
-                }
-                if !projects.isEmpty {
-                    Picker(client.name, selection: $selection) {
-                        ForEach(projects) { Text($0.name).tag(Optional($0.id)) }
-                    }
-                    .pickerStyle(.inline)
-                }
-            }
+        let options = store.workspace.clients.flatMap { client in
+            store.workspace.projects
+                .filter { $0.clientID == client.id && (!$0.archived || $0.id == includeArchived) }
+                .map { ComboboxOption(id: $0.id, title: $0.name, dot: $0.color.tint, section: client.name) }
         }
+        Combobox(
+            options: options, selection: $selection, placeholder: "Choisir un projet",
+            searchPrompt: "Rechercher un projet ou un client…", large: large
+        )
         .accessibilityLabel("Projet")
     }
 }

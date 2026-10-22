@@ -97,3 +97,15 @@ import TimeitCore
     #expect(store.running == nil)
     #expect(store.paletteCommands(matching: "Calendrier", weekSeconds: [:]).map(\.title) == ["Calendrier"])
 }
+
+@Test func typedTimesAreReadLeniently() {
+    #expect(Display.parseTime("9")! == (9, 0))
+    #expect(Display.parseTime("930")! == (9, 30))
+    #expect(Display.parseTime("0930")! == (9, 30))
+    #expect(Display.parseTime("9:30")! == (9, 30))
+    #expect(Display.parseTime("9h30")! == (9, 30))
+    #expect(Display.parseTime(" 18h ")! == (18, 0))
+    #expect(Display.parseTime("24:00") == nil)
+    #expect(Display.parseTime("9:75") == nil)
+    #expect(Display.parseTime("abc") == nil)
+}

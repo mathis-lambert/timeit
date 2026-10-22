@@ -21,7 +21,8 @@ Sources: Apple's [Human Interface Guidelines](https://developer.apple.com/design
 | --- | --- | --- |
 | Button | variants default, secondary, outline, ghost, destructive | `TimeitButtonStyle(kind:large:)`, 30 / 34 pt high, radius 7, hover and press overlays, 45 % when disabled |
 | Input | 1 px border, shadow-xs, 3 px focus ring | `timeitField()` and `inputFrame()`: surface, `Control.border`, accent border and ring while focused |
-| Select | trigger shaped like an input | `SelectField`, `ProjectMenu` (color dot, grouped by client), `CurrencyPicker` |
+| Combobox | popover with a search field and a command list | `Combobox` (`Combobox.swift`): ↑↓, Return, Escape, sections, a check on the current value, optional "Créer « … »"; used by `ProjectMenu`, the client field and `CurrencyPicker` (currencies in circulation, searchable by code or name) |
+| Date picker | button opening a calendar popover | `DateTimeField` (`DateFields.swift`): `MonthCalendar` (Monday first, ink selection, accent ring on today, no future days) beside `TimeField`, which reads "9", "930", "9h30", "9:30" and steps by a quarter hour with ↑↓ |
 | Tabs | muted track, raised active tab | `SegmentedControl`, the raised tab slides with the shell spring |
 | Switch | label and description beside a switch | `SwitchRow` |
 | Badge | small rounded label | `Badge` for "En cours", "Non facturable", "En attente", counts |
@@ -44,7 +45,7 @@ System backgrounds and labels for the frame; `Control` tokens for the content. T
 - **Calendar**: full bleed like Calendar, day totals in the header, tinted events, a thin "now" line. Dragging across empty time draws a session with a dashed outline snapped to quarter hours, then opens the session editor on those times; dragging an event shows its landing spot the same way.
 - **Projects**: one card per client holding a table (project, rate, this week, total, row actions).
 - **Reports**: the metrics strip, then a card with a table of projects, share bars and amounts.
-- **Editors**: dialog layout with labels above fields, a project select, field-style date pickers, switch rows and the dialog buttons at the bottom right.
+- **Editors**: dialog layout with labels above fields, comboboxes for project, client and currency, date and time fields, switch rows and the dialog buttons at the bottom right.
 
 ## Glass (Glass.swift)
 

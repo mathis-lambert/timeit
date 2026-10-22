@@ -1,18 +1,19 @@
 import SwiftUI
 import TimeitCore
 
+/// Every ISO currency, searchable by code or name.
 struct CurrencyPicker: View {
     @Binding var selection: String
-    private static let options = Locale.Currency.isoCurrencies.map(\.identifier).sorted().map { code in
-        (code, "\(code) · \(Locale.current.localizedString(forCurrencyCode: code) ?? code)")
+    /// Currencies in circulation; withdrawn ones (ADP, AFA…) are left out.
+    private static let options = Locale.commonISOCurrencyCodes.sorted().map { code in
+        ComboboxOption(id: code, title: code, detail: Locale.current.localizedString(forCurrencyCode: code))
     }
     var body: some View {
-        SelectField(title: Self.options.first { $0.0 == selection }?.1 ?? selection) {
-            Picker("Devise", selection: $selection) {
-                ForEach(Self.options, id: \.0) { code, label in Text(label).tag(code) }
-            }
-            .pickerStyle(.inline)
-        }
+        Combobox(
+            options: Self.options,
+            selection: Binding(get: { selection }, set: { if let code = $0 { selection = code } }),
+            searchPrompt: "Code ou nom de devise…"
+        )
         .accessibilityLabel("Devise")
     }
 }
@@ -58,17 +59,10 @@ struct EntryEditor: View {
                 ProjectMenu(store: store, selection: $projectID, includeArchived: request.entry?.projectID)
             }
             HStack(alignment: .top, spacing: 12) {
-                FieldRow(label: "Début") {
-                    DatePicker("Début", selection: $start, displayedComponents: [.date, .hourAndMinute])
-                        .labelsHidden().datePickerStyle(.field)
-                }
+                FieldRow(label: "Début") { DateTimeField(date: $start, calendar: store.calendar) }
                 if !running {
-                    FieldRow(label: "Fin") {
-                        DatePicker("Fin", selection: $end, displayedComponents: [.date, .hourAndMinute])
-                            .labelsHidden().datePickerStyle(.field)
-                    }
+                    FieldRow(label: "Fin") { DateTimeField(date: $end, calendar: store.calendar) }
                 }
-                Spacer(minLength: 0)
             }
             if let project = projectID.flatMap(store.workspace.project) {
                 HStack(spacing: 8) {
@@ -166,19 +160,14 @@ struct ProjectEditor: View {
                 TextField("Refonte du site", text: $name).timeitField().focused($focused)
             }
             FieldRow(label: "Client") {
-                SelectField(
-                    title: clientID.flatMap { id in store.workspace.clients.first { $0.id == id }?.name }
-                        ?? "Nouveau client"
-                ) {
-                    Picker("Client", selection: $clientID) {
-                        ForEach(store.workspace.clients) { Text($0.name).tag(Optional($0.id)) }
-                        Divider()
-                        Text("Nouveau client…").tag(Optional<UUID>.none)
-                    }
-                    .pickerStyle(.inline)
-                }
-                if clientID == nil {
-                    TextField("Nom du nouveau client", text: $newClient).timeitField()
+                Combobox(
+                    options: store.workspace.clients.map { ComboboxOption(id: $0.id, title: $0.name) },
+                    selection: $clientID,
+                    placeholder: newClient.isEmpty ? "Choisir ou créer un client" : "Nouveau : \(newClient)",
+                    searchPrompt: "Rechercher ou créer un client…"
+                ) { name in
+                    clientID = nil
+                    newClient = name
                 }
             }
             FieldRow(label: "Couleur") { ColorSwatches(selection: $color) }
@@ -211,6 +200,10 @@ struct ProjectEditor: View {
     private func save() {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanClient = newClient.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Typing a client that already exists picks it instead of creating a twin.
+        let existing = store.workspace.clients.first {
+            $0.name.compare(cleanClient, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
         guard !cleanName.isEmpty, cleanName.count <= 150,
             clientID != nil || (!cleanClient.isEmpty && cleanClient.count <= 150)
         else {
@@ -221,6 +214,7 @@ struct ProjectEditor: View {
             validation = "Saisissez un tarif positif, par exemple 85 ou 85,50."
             return
         }
+        let clientID = clientID ?? existing?.id
         let client = clientID == nil ? Client(name: cleanClient, color: color) : nil
         let project = Project(
             id: request.project?.id ?? UUID(), clientID: clientID ?? client!.id, name: cleanName, color: color,
