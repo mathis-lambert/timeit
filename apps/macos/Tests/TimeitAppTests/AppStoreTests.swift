@@ -55,3 +55,25 @@ import TimeitCore
     #expect(store.workspace.entries.count == count)
     #expect(!store.workspace.activeProjects.contains { $0.id == project.id })
 }
+
+@MainActor @Test func resumeSuggestionsSkipTheRunningAndArchivedProjects() throws {
+    let store = AppStore(database: try LocalDatabase(), demo: true)
+    let running = store.workspace.projects[1]
+    let archived = store.workspace.projects[2]
+    store.start(project: running, title: "Now")
+    store.archive(archived)
+    let recent = store.recentResumable(limit: 10)
+    #expect(!recent.isEmpty)
+    #expect(Set(recent.map(\.projectID)).count == recent.count)
+    #expect(!recent.contains { $0.projectID == running.id || $0.projectID == archived.id })
+    #expect(recent.allSatisfy { $0.end != nil })
+    #expect(recent == recent.sorted { $0.start > $1.start })
+}
+
+@MainActor @Test func nextTimerFallsBackToTheFirstActiveProject() throws {
+    let store = AppStore(database: try LocalDatabase(), demo: true)
+    store.timerProjectID = nil
+    #expect(store.nextTimerProject?.id == store.workspace.activeProjects.first?.id)
+    store.toggleTimer()
+    #expect(store.running?.projectID == store.workspace.activeProjects.first?.id)
+}

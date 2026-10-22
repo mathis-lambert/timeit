@@ -31,6 +31,20 @@ public enum Finance {
         return result
     }
 
+    /// Elapsed time of `entry` inside `period`.
+    public static func seconds(of entry: TimeEntry, within period: DateInterval, now: Date, calendar: Calendar)
+        -> TimeInterval
+    {
+        segments(of: entry, within: period, now: now, calendar: calendar).reduce(0) { $0 + $1.duration }
+    }
+
+    /// The exchange rate a billable segment converts with: the entry's currency on the segment's local day.
+    public static func rateKey(for entry: TimeEntry, segment: DateInterval, currency: String, calendar: Calendar)
+        -> String
+    {
+        ExchangeRate.key(base: entry.currency, quote: currency, date: WireFormat.day(segment.start, calendar: calendar))
+    }
+
     public static func summarize(
         _ entries: [TimeEntry], currency: String, period: DateInterval, rates: [ExchangeRate], now: Date = .now,
         calendar: Calendar = .current
@@ -47,8 +61,7 @@ public enum Finance {
                 if entry.currency == currency {
                     multiplier = 1
                 } else if let rate = lookup[
-                    ExchangeRate.key(
-                        base: entry.currency, quote: currency, date: WireFormat.day(segment.start, calendar: calendar))]
+                    rateKey(for: entry, segment: segment, currency: currency, calendar: calendar)]
                 {
                     multiplier = .amount(rate.rate)
                 } else {

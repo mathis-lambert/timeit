@@ -22,7 +22,6 @@ final class Authentication {
     }
 
     func signIn(configuration: ServerConfiguration, server: URL) async throws {
-        storageKey = "oidc:\(server.absoluteString)"
         if restore(server: server) { return }
         guard let issuer = configuration.issuer.flatMap(URL.init(string:)), issuer.scheme == "https",
             let clientID = configuration.clientID,

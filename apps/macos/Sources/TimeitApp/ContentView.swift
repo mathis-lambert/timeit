@@ -1,28 +1,6 @@
 import SwiftUI
 import TimeitCore
 
-extension AppStore {
-    /// Time inside `interval`, without the currency work a full summary does.
-    func trackedSeconds(_ entries: [TimeEntry], in interval: DateInterval, now: Date = .now) -> TimeInterval {
-        entries.reduce(0) { total, entry in
-            total
-                + Finance.segments(of: entry, within: interval, now: now, calendar: calendar).reduce(0) {
-                    $0 + $1.duration
-                }
-        }
-    }
-    /// Time tracked per project during the current calendar week.
-    var weekSecondsByProject: [UUID: TimeInterval] {
-        guard let week = calendar.dateInterval(of: .weekOfYear, for: .now) else { return [:] }
-        return Dictionary(grouping: workspace.entries, by: \.projectID).mapValues { trackedSeconds($0, in: week) }
-    }
-    /// Share of the weekly goal reached this calendar week, for the brand ring.
-    var weekProgress: Double { goalProgress(weekSecondsByProject) }
-    func goalProgress(_ weekSeconds: [UUID: TimeInterval]) -> Double {
-        weekSeconds.values.reduce(0, +) / Double(max(1, workspace.profile.weeklyGoal) * 3600)
-    }
-}
-
 struct ContentView: View {
     @Bindable var store: AppStore
     var body: some View {
@@ -180,16 +158,18 @@ private struct Sidebar: View {
     private var footer: some View {
         VStack(spacing: 10) {
             if let entry = store.running {
+                let project = store.workspace.project(entry.projectID)
+                let tint = project?.color.tint ?? Theme.accent
                 Button {
                     store.screen = .overview
                 } label: {
                     HStack(spacing: 8) {
-                        LiveDot(color: store.workspace.project(entry.projectID)?.color.tint ?? Theme.accent, size: 6)
+                        LiveDot(color: tint, size: 6)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(entry.title.isEmpty ? "Sans description" : entry.title).font(
+                            Text(entry.displayTitle).font(
                                 .system(size: 11.5, weight: .semibold)
                             ).lineLimit(1)
-                            Text(store.workspace.project(entry.projectID)?.name ?? "").font(.system(size: 10))
+                            Text(project?.name ?? "").font(.system(size: 10))
                                 .foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer(minLength: 4)
@@ -199,9 +179,7 @@ private struct Sidebar: View {
                         }
                     }
                     .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(
-                        (store.workspace.project(entry.projectID)?.color.tint ?? Theme.accent).opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -307,7 +285,7 @@ extension AppStore {
     }
     var periodTitle: String {
         let current = calendar.isDate(
-            anchorDate, equalTo: .now, toGranularity: period == .week || screen == .calendar ? .weekOfYear : .month)
+            anchorDate, equalTo: .now, toGranularity: screen == .calendar ? .weekOfYear : period.component)
         if screen == .calendar {
             return current ? "Cette semaine" : "Semaine \(calendar.component(.weekOfYear, from: anchorDate))"
         }

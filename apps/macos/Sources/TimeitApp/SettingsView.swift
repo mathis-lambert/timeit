@@ -113,12 +113,14 @@ struct SettingsView: View {
                 incomeTax = policy.incomeTax
             }
     }
+    /// A percentage with at most 3 integer digits and 4 decimals, normalized like other amounts.
+    private func percent(_ text: String) -> String? {
+        let normalized = text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+        guard normalized.range(of: "^\\d{1,3}(\\.\\d{1,4})?$", options: .regularExpression) != nil else { return nil }
+        return Display.decimal(normalized)
+    }
     private func save() {
-        guard let social = Display.decimal(contributions), let tax = Display.decimal(incomeTax),
-            contributions.replacingOccurrences(of: ",", with: ".").range(
-                of: "^\\d{1,3}(\\.\\d{1,4})?$", options: .regularExpression) != nil,
-            incomeTax.replacingOccurrences(of: ",", with: ".").range(
-                of: "^\\d{1,3}(\\.\\d{1,4})?$", options: .regularExpression) != nil,
+        guard let social = percent(contributions), let tax = percent(incomeTax),
             Decimal.amount(social) + Decimal.amount(tax) <= 100
         else {
             validation = "Saisissez des pourcentages positifs dont la somme ne dépasse pas 100 %."

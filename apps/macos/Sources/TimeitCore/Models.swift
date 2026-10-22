@@ -150,11 +150,9 @@ public struct ExchangeRate: Codable, Equatable, Sendable {
 }
 
 extension Decimal {
-    public static func amount(_ string: String) -> Decimal {
-        Decimal(string: string, locale: Locale(identifier: "en_US_POSIX")) ?? 0
-    }
+    private static let posix = Locale(identifier: "en_US_POSIX")
+    public static func amount(_ string: String) -> Decimal { Decimal(string: string, locale: posix) ?? 0 }
     public var plainString: String { NSDecimalNumber(decimal: self).stringValue }
-    public var doubleValue: Double { NSDecimalNumber(decimal: self).doubleValue }
 }
 
 public enum WireFormat {

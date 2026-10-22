@@ -19,23 +19,19 @@ struct ReportsView: View {
                     FilterChip(store: store)
                     PeriodControls(store: store)
                 }
-                HStack(alignment: .top, spacing: 0) {
+                MetricStrip {
                     Metric(
                         label: "Temps travaillé", value: Display.duration(summary.seconds),
                         detail: "\(entries.count) sessions")
-                    Divider().padding(.horizontal, 20)
                     Metric(
                         label: "Honoraires HT", value: Display.money(summary.gross, currency: currency),
                         detail: summary.unconvertedEntries.isEmpty
                             ? "Convertis en \(currency)" : "Total partiel · conversions en attente",
                         warning: !summary.unconvertedEntries.isEmpty)
-                    Divider().padding(.horizontal, 20)
                     Metric(
                         label: "Net estimé", value: Display.money(summary.net, currency: currency),
                         detail: "Après prélèvements", tint: Theme.positive)
                 }
-                .fixedSize(horizontal: false, vertical: true)
-                .card()
                 VStack(spacing: 0) {
                     HStack {
                         Text("Client / projet").frame(maxWidth: .infinity, alignment: .leading)
@@ -124,13 +120,8 @@ struct ReportsView: View {
         column("Activité") { safe($0.title) }
         column("Début ISO 8601") { $0.start.ISO8601Format() }
         column("Fin ISO 8601") { $0.end?.ISO8601Format() ?? "" }
-        column("Secondes dans la période") { entry in
-            String(
-                Int(
-                    Finance.segments(of: entry, within: store.interval, now: .now, calendar: store.calendar).reduce(0) {
-                        $0 + $1.duration
-                    }))
-        }
+        let interval = store.interval
+        column("Secondes dans la période") { String(Int(store.trackedSeconds([$0], in: interval))) }
         column("Facturable") { $0.billable ? "oui" : "non" }
         column("Devise d’origine") { $0.currency }
         column("Tarif horaire") { $0.hourlyRate }
@@ -162,15 +153,17 @@ private struct ShareBar: View {
     private let workspace: Workspace
     private let entries: [TimeEntry]
     private let interval: DateInterval
-    private let pageHeight: CGFloat = 778
-    private let rowsPerPage = 14
-    private var pageCount: Int { max(1, (entries.count + rowsPerPage - 1) / rowsPerPage) }
+    private static let pageWidth: CGFloat = 530
+    private static let pageHeight: CGFloat = 778
+    private static let rowsPerPage = 14
+    private let pageCount: Int
     override var isFlipped: Bool { true }
     init(workspace: Workspace, entries: [TimeEntry], interval: DateInterval) {
         self.workspace = workspace
         self.entries = entries
         self.interval = interval
-        super.init(frame: NSRect(x: 0, y: 0, width: 530, height: CGFloat(max(1, (entries.count + 13) / 14)) * 778))
+        pageCount = max(1, (entries.count + Self.rowsPerPage - 1) / Self.rowsPerPage)
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.pageWidth, height: CGFloat(pageCount) * Self.pageHeight))
     }
     required init?(coder: NSCoder) { nil }
     override func knowsPageRange(_ range: NSRangePointer) -> Bool {
@@ -178,7 +171,7 @@ private struct ShareBar: View {
         return true
     }
     override func rectForPage(_ page: Int) -> NSRect {
-        NSRect(x: 0, y: CGFloat(page - 1) * pageHeight, width: 530, height: pageHeight)
+        NSRect(x: 0, y: CGFloat(page - 1) * Self.pageHeight, width: Self.pageWidth, height: Self.pageHeight)
     }
     func write(to url: URL) -> Bool {
         let info = NSPrintInfo.shared.copy() as! NSPrintInfo
@@ -212,7 +205,7 @@ private struct ShareBar: View {
                 ])
         }
         for page in 0..<pageCount {
-            let top = CGFloat(page) * pageHeight
+            let top = CGFloat(page) * Self.pageHeight
             guard rectForPage(page + 1).intersects(dirtyRect) else { continue }
             text("timeit / Relevé d’activité", x: 0, y: top, size: 23, bold: true)
             text(workspace.profile.name, x: 0, y: top + 42, size: 12)
@@ -223,15 +216,13 @@ private struct ShareBar: View {
             text("PROJET / ACTIVITÉ", x: 90, y: top + 105, bold: true)
             text("DURÉE", x: 455, y: top + 105, bold: true)
             var y = top + 132
-            for entry in entries.dropFirst(page * rowsPerPage).prefix(rowsPerPage) {
-                let project = workspace.project(entry.projectID)
+            for entry in entries.dropFirst(page * Self.rowsPerPage).prefix(Self.rowsPerPage) {
                 text(entry.start.formatted(date: .abbreviated, time: .omitted), x: 0, y: y, width: 85)
                 text(
-                    "\(project.flatMap { workspace.client(for: $0) }?.name ?? "") / \(project?.name ?? "")", x: 90,
+                    workspace.label(forProject: entry.projectID, separator: " / "), x: 90,
                     y: y, bold: true, width: 350)
                 text(entry.title, x: 90, y: y + 15, size: 9, width: 350)
-                let seconds = Finance.segments(of: entry, within: interval, now: .now, calendar: workspace.calendar)
-                    .reduce(0) { $0 + $1.duration }
+                let seconds = Finance.seconds(of: entry, within: interval, now: .now, calendar: workspace.calendar)
                 text(Display.duration(seconds), x: 455, y: y, width: 75)
                 y += 42
             }

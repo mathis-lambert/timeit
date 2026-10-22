@@ -27,7 +27,8 @@ Before finishing a change: format, lint, run the tests of every package you touc
 ## Layout and ownership
 
 - `TimeitCore`: models, decimal money, finance, calendar layout, SQLite (GRDB), HTTP client. Must not import SwiftUI or AppKit.
-- `TimeitApp`: `AppStore` (main-actor, `@Observable`) owns all workspace mutations; views call store methods and never write to `LocalDatabase` directly. `Theme.swift` holds tokens and shared components.
+- `TimeitApp`: `AppStore` (main-actor, `@Observable`) owns all workspace mutations and the rules views rely on (`nextTimerProject`, `canResume`, `recentResumable`, `visibleEntries`, `trackedSeconds`). Views call store methods, read those results, and never write to `LocalDatabase` directly. `Theme.swift` holds tokens, shared components and display helpers (`Display`, `displayTitle`, `label(forProject:)`).
+- Period math lives in TimeitCore `Finance` (`segments`, `seconds`, `rateKey`, `summarize`); do not re-sum segments in views.
 - `backend/src`: one Fastify service. Ownership comes from the verified token, never from request bodies.
 - `docs/ARCHITECTURE.md` explains sync, conflicts and money rules; read it before touching persistence, sync or finance.
 

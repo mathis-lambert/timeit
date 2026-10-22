@@ -13,7 +13,8 @@ struct DashboardView: View {
                     PeriodControls(store: store)
                 }
                 TimerComposer(store: store)
-                TimelineView(.periodic(from: .now, by: 30)) { context in
+                // Totals only move while a timer runs.
+                TimelineView(.periodic(from: .now, by: store.running == nil ? 3600 : 30)) { context in
                     let summary = store.summary(entries: entries, now: context.date)
                     VStack(spacing: 20) {
                         MetricsRow(store: store, summary: summary)
@@ -42,8 +43,8 @@ private struct MetricsRow: View {
     let summary: FinancialSummary
     var body: some View {
         let currency = store.workspace.profile.currency
-        let goalSeconds = Double(max(1, store.workspace.profile.weeklyGoal)) * 3600 * (store.period == .week ? 1 : 4.33)
-        HStack(alignment: .top, spacing: 0) {
+        let goalSeconds = store.weeklyGoalSeconds * (store.period == .week ? 1 : 4.33)
+        MetricStrip {
             Metric(
                 label: "Temps travaillé", value: Display.duration(summary.seconds),
                 detail: "\(Display.duration(summary.billableSeconds)) facturables"
@@ -57,17 +58,30 @@ private struct MetricsRow: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(percent) % de l’objectif")
             }
-            Divider().padding(.horizontal, 20)
             Metric(
                 label: "Honoraires bruts", value: Display.money(summary.gross, currency: currency),
                 detail: summary.unconvertedEntries.isEmpty
                     ? "Travail facturable · HT"
                     : "\(summary.unconvertedEntries.count) conversion(s) en attente",
                 warning: !summary.unconvertedEntries.isEmpty)
-            Divider().padding(.horizontal, 20)
             Metric(
                 label: "Net estimé", value: Display.money(summary.net, currency: currency),
                 detail: "Après cotisations et impôts", tint: Theme.positive)
+        }
+    }
+}
+
+/// Metrics side by side in one card, separated by dividers.
+struct MetricStrip<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            Group(subviews: content) { subviews in
+                ForEach(subviews) { subview in
+                    if subview.id != subviews.first?.id { Divider().padding(.horizontal, 20) }
+                    subview
+                }
+            }
         }
         .fixedSize(horizontal: false, vertical: true)
         .card()
@@ -183,8 +197,8 @@ private struct Breakdown: View {
 
 struct WeeklyActivity: View {
     let store: AppStore
-    let entries: [TimeEntry]
-    let now: Date
+    /// Built once per refresh, so hovering the chart does not recompute it.
+    private let points: [Point]
     @State private var selectedDay: Date?
     private struct Point: Identifiable {
         let day: Date
@@ -192,23 +206,27 @@ struct WeeklyActivity: View {
         let hours: Double
         var id: String { "\(day.timeIntervalSince1970):\(project.id)" }
     }
-    private var points: [Point] {
-        let byProject = Dictionary(grouping: entries, by: \.projectID)
-        var result: [Point] = []
-        var day = store.interval.start
-        while day < store.interval.end {
-            let next = store.calendar.date(byAdding: .day, value: 1, to: day)!
-            for project in store.workspace.projects {
-                let seconds = store.trackedSeconds(
-                    byProject[project.id] ?? [], in: DateInterval(start: day, end: next), now: now)
-                if seconds > 0 { result.append(Point(day: day, project: project, hours: seconds / 3600)) }
+    init(store: AppStore, entries: [TimeEntry], now: Date) {
+        self.store = store
+        let calendar = store.calendar
+        let interval = store.interval
+        // Segments are already split at local midnight, so one pass buckets them by day and project.
+        var seconds: [Date: [UUID: TimeInterval]] = [:]
+        for entry in entries {
+            for segment in Finance.segments(of: entry, within: interval, now: now, calendar: calendar) {
+                seconds[calendar.startOfDay(for: segment.start), default: [:]][entry.projectID, default: 0] +=
+                    segment.duration
             }
-            day = next
         }
-        return result
+        let order = Dictionary(uniqueKeysWithValues: store.workspace.projects.enumerated().map { ($1.id, $0) })
+        points = seconds.flatMap { day, byProject in
+            byProject.compactMap { id, total in
+                store.workspace.project(id).map { Point(day: day, project: $0, hours: total / 3600) }
+            }
+        }
+        .sorted { ($0.day, order[$0.project.id] ?? 0) < ($1.day, order[$1.project.id] ?? 0) }
     }
     var body: some View {
-        let points = points
         let totals = Dictionary(grouping: points) { $0.day }.mapValues { $0.reduce(0) { $0 + $1.hours } }
         let average = totals.isEmpty ? 0 : totals.values.reduce(0, +) / Double(totals.count)
         let selectedTotal = selectedDay.map { totals[store.calendar.startOfDay(for: $0)] ?? 0 }
@@ -322,24 +340,24 @@ struct EntryRow: View {
     let store: AppStore
     let entry: TimeEntry
     @State private var hovered = false
-    private var project: Project? { store.workspace.project(entry.projectID) }
     var body: some View {
+        let project = store.workspace.project(entry.projectID)
+        let resumable = store.canResume(entry)
         HStack(spacing: 12) {
             ProjectMark(color: project?.color ?? .coral)
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.title.isEmpty ? "Sans description" : entry.title).font(.system(size: 13, weight: .medium))
+                Text(entry.displayTitle).font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
                 HStack(spacing: 5) {
                     Text(
-                        [project.flatMap { store.workspace.client(for: $0) }?.name, project?.name]
-                            .compactMap { $0 }.joined(separator: " · "))
+                        store.workspace.label(forProject: entry.projectID))
                     if !entry.billable { Text("· Non facturable") }
                 }
                 .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 10)
             Text(
-                "\(Display.time(entry.start, calendar: store.calendar)) – \(entry.end.map { Display.time($0, calendar: store.calendar) } ?? "en cours")"
+                Display.timeRange(entry, calendar: store.calendar)
             )
             .font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit()
             Group {
@@ -363,7 +381,7 @@ struct EntryRow: View {
             .opacity(hovered ? 1 : 0)
             .help("Reprendre cette activité")
             .accessibilityLabel("Reprendre \(entry.title)")
-            .disabled(project?.archived ?? true)
+            .disabled(!resumable)
         }
         .padding(.vertical, 8).padding(.horizontal, 8)
         .hoverHighlight()
@@ -372,7 +390,7 @@ struct EntryRow: View {
         .contextMenu {
             Button("Modifier…", systemImage: "pencil") { store.entryEditor = EntryEditorRequest(entry: entry) }
             Button("Reprendre cette activité", systemImage: "play") { store.resume(entry) }
-                .disabled(project?.archived ?? true)
+                .disabled(!resumable)
             Divider()
             Button("Supprimer", systemImage: "trash", role: .destructive) { store.delete(entry) }
         }

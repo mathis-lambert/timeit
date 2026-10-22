@@ -42,7 +42,7 @@ struct TimerComposer: View {
             .foregroundStyle(.white)
             .glassEffect(.regular.tint(Theme.accent).interactive(), in: .circle)
             .glassEffectID("action", in: glass)
-            .disabled(store.timerProjectID == nil)
+            .disabled(store.nextTimerProject == nil)
             .help("Démarrer (↩)")
             .accessibilityLabel("Démarrer le timer")
         }
@@ -58,13 +58,12 @@ struct TimerComposer: View {
                     Button {
                         store.entryEditor = EntryEditorRequest(entry: entry)
                     } label: {
-                        Text(entry.title.isEmpty ? "Sans description" : entry.title)
+                        Text(entry.displayTitle)
                             .font(.system(size: 15, weight: .semibold)).lineLimit(1)
                     }
                     .buttonStyle(.plain).help("Modifier le timer actif")
                     Text(
-                        [project.flatMap { store.workspace.client(for: $0) }?.name, project?.name]
-                            .compactMap { $0 }.joined(separator: " · ")
+                        store.workspace.label(forProject: entry.projectID)
                     )
                     .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -94,7 +93,6 @@ struct TimerComposer: View {
     }
 
     private func start() {
-        guard store.timerProjectID != nil else { return }
         withAnimation(Motion.standard) { store.toggleTimer() }
     }
 }
@@ -103,7 +101,7 @@ struct TimerComposer: View {
 struct ProjectChip: View {
     @Bindable var store: AppStore
     var body: some View {
-        let project = store.timerProjectID.flatMap(store.workspace.project)
+        let project = store.nextTimerProject
         Menu {
             Picker("Projet", selection: $store.timerProjectID) {
                 ForEach(store.workspace.activeProjects) { item in
@@ -154,6 +152,7 @@ struct MenuBarView: View {
                 .help("Réglages").accessibilityLabel("Réglages")
             }
             timer
+            let recent = store.recentResumable()
             if !recent.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Reprendre").eyebrow().padding(.leading, 6).padding(.bottom, 4)
@@ -165,7 +164,7 @@ struct MenuBarView: View {
                             HStack(spacing: 10) {
                                 ProjectMark(color: project?.color ?? .coral)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(entry.title.isEmpty ? "Sans description" : entry.title)
+                                    Text(entry.displayTitle)
                                         .font(.system(size: 12.5)).lineLimit(1)
                                     Text(project?.name ?? "").font(.system(size: 10.5)).foregroundStyle(.secondary)
                                 }
@@ -205,12 +204,12 @@ struct MenuBarView: View {
                     Text(Display.duration(entry.duration(at: context.date), seconds: true))
                         .font(.system(size: 38, weight: .medium, design: .rounded)).monospacedDigit()
                 }
-                Text(entry.title.isEmpty ? "Sans description" : entry.title)
+                Text(entry.displayTitle)
                     .font(.system(size: 13, weight: .medium)).lineLimit(2)
             } else {
                 TextField("Sur quoi travaillez-vous ?", text: $store.timerTitle)
                     .textFieldStyle(.roundedBorder).controlSize(.large)
-                    .onSubmit { if store.timerProjectID != nil { store.toggleTimer() } }
+                    .onSubmit { store.toggleTimer() }
                     .accessibilityLabel("Description de l’activité")
                 ProjectChip(store: store)
             }
@@ -225,22 +224,9 @@ struct MenuBarView: View {
             }
             .buttonStyle(.glassProminent).controlSize(.large)
             .tint(tint)
-            .disabled(store.running == nil && store.timerProjectID == nil)
+            .disabled(store.running == nil && store.nextTimerProject == nil)
         }
         .card(padding: 14)
-    }
-
-    private var recent: [TimeEntry] {
-        var seen = Set<UUID>()
-        return Array(
-            store.workspace.entries.sorted { $0.start > $1.start }.filter { entry in
-                guard store.workspace.project(entry.projectID)?.archived == false, entry.end != nil,
-                    entry.projectID != store.running?.projectID
-                else {
-                    return false
-                }
-                return seen.insert(entry.projectID).inserted
-            }.prefix(3))
     }
 }
 
@@ -251,15 +237,24 @@ struct CommandPalette: View {
     @Bindable var store: AppStore
     @FocusState private var focused: Bool
     @State private var selection = 0
+    /// Weekly totals shown next to projects; computed once per opening, not per keystroke.
+    @State private var weekSeconds: [UUID: TimeInterval] = [:]
+
+    private enum Section: String {
+        case timer = "Timer"
+        case start = "Démarrer"
+        case actions = "Actions"
+    }
 
     private struct Command: Identifiable {
         let id: String
-        let section: String
+        let section: Section
         let title: String
         let subtitle: String
         let symbol: String
-        let tint: Color
-        let accessory: String
+        var tint: Color = .secondary
+        var shortcut: String? = nil
+        var detail: String? = nil
         let run: () -> Void
     }
 
@@ -272,40 +267,35 @@ struct CommandPalette: View {
         if let entry = store.running, matches("arrêter", "stop", "timer") {
             result.append(
                 Command(
-                    id: "stop", section: "Timer", title: "Arrêter le timer",
-                    subtitle: entry.title.isEmpty ? "Sans description" : entry.title, symbol: "stop.fill",
-                    tint: Theme.accent, accessory: "⌘↩"
-                ) { store.stop() })
+                    id: "stop", section: .timer, title: "Arrêter le timer", subtitle: entry.displayTitle,
+                    symbol: "stop.fill", tint: Theme.accent, shortcut: "⌘↩", run: store.stop))
         }
-        let weekSeconds = store.weekSecondsByProject
         for project in store.workspace.activeProjects {
             let client = store.workspace.client(for: project)?.name ?? ""
             guard matches(project.name, client) else { continue }
             let week = weekSeconds[project.id] ?? 0
             result.append(
                 Command(
-                    id: project.id.uuidString, section: "Démarrer", title: project.name,
-                    subtitle: client, symbol: "circle.fill", tint: project.color.tint,
-                    accessory: week > 0 ? Display.duration(week) : ""
+                    id: project.id.uuidString, section: .start, title: project.name, subtitle: client,
+                    symbol: "circle.fill", tint: project.color.tint, detail: week > 0 ? Display.duration(week) : nil
                 ) { store.start(project: project) })
         }
-        let actions: [(String, String, String, String, () -> Void)] = [
-            ("Nouvelle session", "Ajouter du temps passé", "plus", "⌘N", { store.entryEditor = EntryEditorRequest() }),
-            (
-                "Nouveau projet", "Client, tarif, couleur", "folder.badge.plus", "⌘⇧N",
-                { store.projectEditor = ProjectEditorRequest() }
-            ),
-            (Screen.overview.title, "Aller à", Screen.overview.symbol, "", { store.screen = .overview }),
-            (Screen.calendar.title, "Aller à", Screen.calendar.symbol, "", { store.screen = .calendar }),
-            (Screen.projects.title, "Aller à", Screen.projects.symbol, "", { store.screen = .projects }),
-            (Screen.reports.title, "Aller à", Screen.reports.symbol, "", { store.screen = .reports }),
+        let actions = [
+            Command(
+                id: "new-session", section: .actions, title: "Nouvelle session", subtitle: "Ajouter du temps passé",
+                symbol: "plus", shortcut: "⌘N"
+            ) { store.entryEditor = EntryEditorRequest() },
+            Command(
+                id: "new-project", section: .actions, title: "Nouveau projet", subtitle: "Client, tarif, couleur",
+                symbol: "folder.badge.plus", shortcut: "⌘⇧N"
+            ) { store.projectEditor = ProjectEditorRequest() },
         ]
-        for action in actions where matches(action.0, action.1) {
-            result.append(
-                Command(
-                    id: action.0, section: "Actions", title: action.0, subtitle: action.1, symbol: action.2,
-                    tint: .secondary, accessory: action.3, run: action.4))
+        let screens = Screen.allCases.map { screen in
+            Command(
+                id: screen.rawValue, section: .actions, title: screen.title, subtitle: "Aller à", symbol: screen.symbol
+            ) { store.screen = screen }
         }
+        result += (actions + screens).filter { matches($0.title, $0.subtitle) }
         return result
     }
 
@@ -346,7 +336,7 @@ struct CommandPalette: View {
                             }
                             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                                 if index == 0 || items[index - 1].section != item.section {
-                                    Text(item.section).font(.system(size: 11, weight: .medium))
+                                    Text(item.section.rawValue).font(.system(size: 11, weight: .medium))
                                         .foregroundStyle(.secondary)
                                         .padding(.horizontal, 10).padding(.top, index == 0 ? 4 : 10).padding(
                                             .bottom, 4)
@@ -368,7 +358,7 @@ struct CommandPalette: View {
                 HStack(spacing: 6) {
                     Spacer()
                     if items.indices.contains(selection) {
-                        Text(items[selection].section == "Actions" ? "Ouvrir" : "Lancer")
+                        Text(items[selection].section == .actions ? "Ouvrir" : "Lancer")
                         KeyCap("↩")
                     }
                     Text("Naviguer").padding(.leading, 8)
@@ -385,6 +375,7 @@ struct CommandPalette: View {
         .onAppear {
             store.launcherQuery = ""
             selection = 0
+            weekSeconds = store.weekSecondsByProject
             focused = true
         }
         .onChange(of: store.launcherQuery) { selection = 0 }
@@ -392,15 +383,14 @@ struct CommandPalette: View {
 
     private func row(_ item: Command, selected: Bool) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: item.symbol).font(.system(size: item.symbol == "circle.fill" ? 8 : 13))
+            Image(systemName: item.symbol).font(.system(size: item.section == .start ? 8 : 13))
                 .foregroundStyle(item.tint).frame(width: 20)
             Text(item.title).font(.system(size: 13.5)).lineLimit(1)
             Text(item.subtitle).font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(1)
             Spacer(minLength: 8)
-            if item.accessory.hasPrefix("⌘") {
-                KeyCap(item.accessory)
-            } else if !item.accessory.isEmpty {
-                Text(item.accessory).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.tertiary)
+            if let shortcut = item.shortcut { KeyCap(shortcut) }
+            if let detail = item.detail {
+                Text(detail).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.tertiary)
             }
         }
         .padding(.horizontal, 10).frame(height: 36)

@@ -26,6 +26,7 @@ enum Screen: String, CaseIterable, Identifiable {
 enum ReportPeriod: String, CaseIterable {
     case week = "Cette semaine"
     case month = "Ce mois-ci"
+    var component: Calendar.Component { self == .week ? .weekOfYear : .month }
 }
 struct EntryEditorRequest: Identifiable {
     let id = UUID()
@@ -74,49 +75,81 @@ final class AppStore {
     var calendar: Calendar { workspace.calendar }
     var running: TimeEntry? { workspace.runningEntry }
     var canUndo: Bool { !deletedEntries.isEmpty }
-    var interval: DateInterval {
-        calendar.dateInterval(of: period == .week ? .weekOfYear : .month, for: anchorDate)!
-    }
-    var visibleEntries: [TimeEntry] {
-        workspace.entries.filter { entry in
-            (projectFilter == nil || entry.projectID == projectFilter) && entry.start < interval.end
-                && (entry.end ?? .now) > interval.start
-        }.sorted { $0.start > $1.start }
-    }
+    var interval: DateInterval { calendar.dateInterval(of: period.component, for: anchorDate)! }
     var calendarWeek: DateInterval { calendar.dateInterval(of: .weekOfYear, for: anchorDate)! }
-    var hasLocalChanges: Bool { state.sync.hasChanges }
+    /// Entries of the selected project, or all entries when no filter is set.
+    var filteredEntries: [TimeEntry] {
+        guard let projectFilter else { return workspace.entries }
+        return workspace.entries.filter { $0.projectID == projectFilter }
+    }
+    /// Filtered entries overlapping the selected period, newest first.
+    var visibleEntries: [TimeEntry] {
+        let interval = interval
+        let now = Date.now
+        return filteredEntries.filter { $0.start < interval.end && ($0.end ?? now) > interval.start }
+            .sorted { $0.start > $1.start }
+    }
+    /// The project the next timer starts on: the chosen one, else the first active project.
+    var nextTimerProject: Project? {
+        workspace.activeProjects.first { $0.id == timerProjectID } ?? workspace.activeProjects.first
+    }
+    func canResume(_ entry: TimeEntry) -> Bool { workspace.project(entry.projectID)?.archived == false }
+    /// The latest finished entry of each other active project, newest first.
+    func recentResumable(limit: Int = 3) -> [TimeEntry] {
+        var seen: Set<UUID> = running.map { [$0.projectID] } ?? []
+        var result: [TimeEntry] = []
+        for entry in workspace.entries.sorted(by: { $0.start > $1.start })
+        where entry.end != nil && canResume(entry) && seen.insert(entry.projectID).inserted {
+            result.append(entry)
+            if result.count == limit { break }
+        }
+        return result
+    }
 
     init(database suppliedDatabase: LocalDatabase? = nil, demo: Bool = false) {
         do {
-            if let suppliedDatabase {
-                database = suppliedDatabase
-                realDatabase = suppliedDatabase
-                state = try suppliedDatabase.load()
-                if demo { enterDemo() }
-                timerProjectID = workspace.activeProjects.first?.id
-                return
-            }
-            let folder = try FileManager.default.url(
-                for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
-            ).appendingPathComponent("Timeit", isDirectory: true)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let db = try LocalDatabase(path: folder.appendingPathComponent("timeit.sqlite").path)
+            let db = try suppliedDatabase ?? LocalDatabase(path: Self.defaultDatabasePath())
             database = db
             realDatabase = db
             state = try db.load()
             timerProjectID = workspace.activeProjects.first?.id
-            if CommandLine.arguments.contains("--demo") { enterDemo() }
+            if demo || (suppliedDatabase == nil && CommandLine.arguments.contains("--demo")) { enterDemo() }
         } catch { startupError = error.localizedDescription }
     }
+    private static func defaultDatabasePath() throws -> String {
+        let folder = try FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+        ).appendingPathComponent("Timeit", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder.appendingPathComponent("timeit.sqlite").path
+    }
 
-    func summary(entries: [TimeEntry]? = nil, period: DateInterval? = nil, now: Date = .now) -> FinancialSummary {
+    func summary(entries: [TimeEntry], now: Date = .now) -> FinancialSummary {
         Finance.summarize(
-            entries ?? visibleEntries, currency: workspace.profile.currency, period: period ?? interval,
-            rates: state.rates, now: now, calendar: calendar)
+            entries, currency: workspace.profile.currency, period: interval, rates: state.rates, now: now,
+            calendar: calendar)
+    }
+    /// Time inside `interval`, without the currency work a full summary does.
+    func trackedSeconds(_ entries: [TimeEntry], in interval: DateInterval, now: Date = .now) -> TimeInterval {
+        let calendar = calendar
+        return entries.reduce(0) { $0 + Finance.seconds(of: $1, within: interval, now: now, calendar: calendar) }
+    }
+    /// Time tracked per project during the current calendar week.
+    var weekSecondsByProject: [UUID: TimeInterval] {
+        guard let week = calendar.dateInterval(of: .weekOfYear, for: .now) else { return [:] }
+        let now = Date.now
+        let overlapping = workspace.entries.filter { $0.start < week.end && ($0.end ?? now) > week.start }
+        return Dictionary(grouping: overlapping, by: \.projectID).mapValues { trackedSeconds($0, in: week, now: now) }
+    }
+    var weeklyGoalSeconds: TimeInterval { Double(max(1, workspace.profile.weeklyGoal)) * 3600 }
+    /// Share of the weekly goal reached this calendar week, for the brand ring.
+    var weekProgress: Double { goalProgress(weekSecondsByProject) }
+    func goalProgress(_ weekSeconds: [UUID: TimeInterval]) -> Double {
+        weekSeconds.values.reduce(0, +) / weeklyGoalSeconds
     }
     func navigate(_ direction: Int) {
         anchorDate = calendar.date(
-            byAdding: screen == .calendar || period == .week ? .weekOfYear : .month, value: direction, to: anchorDate)!
+            byAdding: screen == .calendar ? .weekOfYear : period.component, value: direction, to: anchorDate)!
     }
     func showError(_ error: Error) { errorMessage = error.localizedDescription }
 
@@ -149,13 +182,7 @@ final class AppStore {
         }
         guard !project.archived else { return }
         if change({ document in
-            if let index = document.entries.firstIndex(where: { $0.end == nil }) {
-                if document.entries[index].duration(at: now) >= 1 {
-                    document.entries[index].end = now
-                } else {
-                    document.entries.remove(at: index)
-                }
-            }
+            Self.closeRunning(&document, at: now)
             document.entries.append(
                 TimeEntry(project: project, title: cleanTitle, start: now, policy: document.policy(at: now)))
         }) {
@@ -166,28 +193,28 @@ final class AppStore {
     }
     func stop() {
         let now = Date.now
-        change { document in
-            guard let index = document.entries.firstIndex(where: { $0.end == nil }) else { return }
-            if document.entries[index].duration(at: now) >= 1 {
-                document.entries[index].end = now
-            } else {
-                document.entries.remove(at: index)
-            }
+        change { Self.closeRunning(&$0, at: now) }
+    }
+    /// Ends the running entry at `now`, or drops it when it lasted under a second.
+    private static func closeRunning(_ document: inout Workspace, at now: Date) {
+        guard let index = document.entries.firstIndex(where: { $0.end == nil }) else { return }
+        if document.entries[index].duration(at: now) >= 1 {
+            document.entries[index].end = now
+        } else {
+            document.entries.remove(at: index)
         }
     }
     func toggleTimer() {
         if running != nil {
             stop()
-        } else if let project = workspace.activeProjects.first(where: { $0.id == timerProjectID })
-            ?? workspace.activeProjects.first
-        {
+        } else if let project = nextTimerProject {
             start(project: project)
         } else {
             projectEditor = ProjectEditorRequest()
         }
     }
     func resume(_ entry: TimeEntry) {
-        guard let project = workspace.project(entry.projectID), !project.archived else { return }
+        guard canResume(entry), let project = workspace.project(entry.projectID) else { return }
         start(project: project, title: entry.title)
     }
     func save(entry: TimeEntry) -> Bool {
@@ -258,11 +285,15 @@ final class AppStore {
             }
         }
     }
+    /// Abandons in-flight sync work; late responses from the old generation are ignored.
+    private func invalidateSync() {
+        syncTask?.cancel()
+        connectionGeneration = UUID()
+        isSyncing = false
+    }
     func enterDemo() {
         do {
-            syncTask?.cancel()
-            connectionGeneration = UUID()
-            isSyncing = false
+            invalidateSync()
             let demo = try LocalDatabase()
             let data = DemoData.make()
             try demo.save(data)
@@ -290,10 +321,11 @@ final class AppStore {
         } catch { showError(error) }
     }
 
+    private static let loopbackHosts: Set = ["127.0.0.1", "localhost", "::1"]
     private func endpoint() throws -> URL {
         guard let url = URL(string: serverURL), let host = url.host, url.user == nil, url.password == nil,
             url.query == nil, url.fragment == nil,
-            url.scheme == "https" || (url.scheme == "http" && ["127.0.0.1", "localhost", "::1"].contains(host))
+            url.scheme == "https" || (url.scheme == "http" && Self.loopbackHosts.contains(host))
         else {
             throw ConnectionError.invalidURL
         }
@@ -325,7 +357,7 @@ final class AppStore {
             let url = try endpoint()
             let configuration = try await APIClient(baseURL: url).configuration()
             if configuration.developmentAuth {
-                guard ["127.0.0.1", "localhost", "::1"].contains(url.host ?? "") else {
+                guard Self.loopbackHosts.contains(url.host ?? "") else {
                     throw ConnectionError.invalidURL
                 }
                 localToken = "local-development-token"
@@ -353,9 +385,7 @@ final class AppStore {
         }
     }
     func disconnect() {
-        syncTask?.cancel()
-        connectionGeneration = UUID()
-        isSyncing = false
+        invalidateSync()
         connected = false
         localToken = nil
         connectionOwner = nil
@@ -440,30 +470,43 @@ final class AppStore {
     private func refreshRates(using client: APIClient, generation: UUID) async {
         // Rescanning history is only needed after the document or the rate cache changed.
         let fingerprint = RatesFingerprint(state)
-        guard fingerprint != ratesCheckedFor else { return }
+        guard fingerprint != ratesCheckedFor, let database else { return }
+        let currency = workspace.profile.currency
         let fullPeriod = DateInterval(start: .distantPast, end: .now)
-        var needed: [String: (String, String)] = [:]
         let present = Set(state.rates.map(\.key))
-        for entry in workspace.entries where entry.billable && entry.currency != workspace.profile.currency {
+        var needed: [String: (base: String, day: String)] = [:]
+        for entry in workspace.entries where entry.billable && entry.currency != currency {
             for segment in Finance.segments(of: entry, within: fullPeriod, now: .now, calendar: calendar) {
-                let day = WireFormat.day(segment.start, calendar: calendar)
-                let key = ExchangeRate.key(base: entry.currency, quote: workspace.profile.currency, date: day)
-                if !present.contains(key) { needed[key] = (entry.currency, day) }
+                let key = Finance.rateKey(for: entry, segment: segment, currency: currency, calendar: calendar)
+                if !present.contains(key) {
+                    needed[key] = (entry.currency, WireFormat.day(segment.start, calendar: calendar))
+                }
             }
         }
-        // Bounded sequential requests keep first sync gentle on the provider.
+        // Bounded sequential requests keep first sync gentle on the provider; results are saved once.
+        var fetched: [ExchangeRate] = []
+        var complete = needed.count <= 100
         for (_, pair) in needed.sorted(by: { $0.key < $1.key }).prefix(100) {
-            do {
-                let rate = try await client.rate(base: pair.0, quote: workspace.profile.currency, date: pair.1)
-                guard generation == connectionGeneration else { return }
-                var next = state
-                next.rates.removeAll { $0.key == rate.key }
-                next.rates.append(rate)
-                try database?.save(next)
-                state = next
-            } catch { return }
+            guard let rate = try? await client.rate(base: pair.base, quote: currency, date: pair.day) else {
+                complete = false
+                break
+            }
+            fetched.append(rate)
         }
-        if needed.count <= 100 { ratesCheckedFor = RatesFingerprint(state) }
+        guard generation == connectionGeneration else { return }
+        if !fetched.isEmpty {
+            var next = state
+            let keys = Set(fetched.map(\.key))
+            next.rates.removeAll { keys.contains($0.key) }
+            next.rates.append(contentsOf: fetched)
+            do {
+                try database.save(next)
+                state = next
+            } catch {
+                return
+            }
+        }
+        if complete { ratesCheckedFor = RatesFingerprint(state) }
     }
     /// Identifies the inputs of a rate scan: synced document, local edits and cached rates.
     private struct RatesFingerprint: Equatable {

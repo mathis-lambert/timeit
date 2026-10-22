@@ -3,11 +3,12 @@ import TimeitCore
 
 struct CurrencyPicker: View {
     @Binding var selection: String
+    private static let options = Locale.Currency.isoCurrencies.map(\.identifier).sorted().map { code in
+        (code, "\(code) · \(Locale.current.localizedString(forCurrencyCode: code) ?? code)")
+    }
     var body: some View {
         Picker("Devise", selection: $selection) {
-            ForEach(Locale.Currency.isoCurrencies.map(\.identifier).sorted(), id: \.self) { code in
-                Text("\(code) · \(Locale.current.localizedString(forCurrencyCode: code) ?? code)").tag(code)
-            }
+            ForEach(Self.options, id: \.0) { code, label in Text(label).tag(code) }
         }
     }
 }
@@ -24,20 +25,20 @@ struct EntryEditor: View {
     @State private var billable: Bool
     @State private var validation: String?
     @FocusState private var focused: Bool
+    private let editsRunningEntry: Bool
 
     init(store: AppStore, request: EntryEditorRequest) {
         self.store = store
         self.request = request
+        let projectID = request.entry?.projectID ?? store.nextTimerProject?.id
+        editsRunningEntry = request.entry.map { $0.end == nil } ?? false
         _title = State(initialValue: request.entry?.title ?? "")
-        _projectID = State(
-            initialValue: request.entry?.projectID ?? store.timerProjectID ?? store.workspace.activeProjects.first?.id)
+        _projectID = State(initialValue: projectID)
         _start = State(initialValue: request.entry?.start ?? request.start ?? .now.addingTimeInterval(-3600))
         _end = State(initialValue: request.entry?.end ?? min(.now, (request.start ?? .now).addingTimeInterval(3600)))
-        _running = State(initialValue: request.entry != nil && request.entry?.end == nil)
+        _running = State(initialValue: editsRunningEntry)
         _billable = State(
-            initialValue: request.entry?.billable ?? store.workspace.project(
-                request.entry?.projectID ?? store.timerProjectID ?? store.workspace.activeProjects.first?.id ?? UUID())?
-                .billable ?? true)
+            initialValue: request.entry?.billable ?? projectID.flatMap(store.workspace.project)?.billable ?? true)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -47,14 +48,14 @@ struct EntryEditor: View {
                 Picker("Projet", selection: $projectID) {
                     ForEach(store.workspace.projects.filter { !$0.archived || $0.id == request.entry?.projectID }) {
                         project in
-                        Text("\(store.workspace.client(for: project)?.name ?? "") / \(project.name)").tag(
+                        Text(store.workspace.label(forProject: project.id, separator: " / ")).tag(
                             Optional(project.id))
                     }
                 }
                 DatePicker("Début", selection: $start, displayedComponents: [.date, .hourAndMinute])
                 if !running { DatePicker("Fin", selection: $end, displayedComponents: [.date, .hourAndMinute]) }
                 Toggle("Facturable", isOn: $billable)
-                if request.entry != nil && request.entry?.end == nil { Toggle("Timer en cours", isOn: $running) }
+                if editsRunningEntry { Toggle("Timer en cours", isOn: $running) }
             }.formStyle(.grouped).scrollDisabled(true).frame(height: running ? 230 : 260)
             if let project = projectID.flatMap(store.workspace.project) {
                 HStack(spacing: 18) {

@@ -8,10 +8,18 @@ struct CalendarView: View {
     private var draggedDay: Date? {
         dragged.flatMap { id in store.workspace.entries.first { $0.id == id }?.start }
     }
-    private var days: [Date] {
-        (0..<7).map { store.calendar.date(byAdding: .day, value: $0, to: store.calendarWeek.start)! }
+    private var days: [DateInterval] {
+        let calendar = store.calendar
+        return (0..<7).map { offset in
+            calendar.dateInterval(
+                of: .day, for: calendar.date(byAdding: .day, value: offset, to: store.calendarWeek.start)!)!
+        }
     }
     var body: some View {
+        let days = days
+        let week = store.calendarWeek
+        // One pass over the filtered history; each column then only sees its own week.
+        let weekEntries = store.filteredEntries.filter { $0.start < week.end && ($0.end ?? .now) > week.start }
         VStack(spacing: 14) {
             PageHeader(title: store.periodTitle, subtitle: store.periodSubtitle) {
                 FilterChip(store: store)
@@ -21,14 +29,15 @@ struct CalendarView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
                     Color.clear.frame(width: 58)
-                    ForEach(days, id: \.self) { day in dayHeader(day) }
+                    ForEach(days, id: \.start) { day in dayHeader(day, entries: weekEntries) }
                 }
                 .padding(.trailing, 12).padding(.vertical, 12)
                 .fixedSize(horizontal: false, vertical: true)
                 Divider()
                 ScrollViewReader { proxy in
                     ScrollView(.vertical) {
-                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                        // Only the current week has a moving "now" line.
+                        TimelineView(.periodic(from: .now, by: week.contains(.now) ? 60 : 3600)) { context in
                             HStack(alignment: .top, spacing: 0) {
                                 VStack(spacing: 0) {
                                     ForEach(0..<24, id: \.self) { hour in
@@ -40,13 +49,16 @@ struct CalendarView: View {
                                             .id("hour-\(hour)")
                                     }
                                 }
-                                ForEach(days, id: \.self) { day in
+                                ForEach(days, id: \.start) { day in
                                     DayColumn(
-                                        store: store, day: day, hourHeight: hourHeight, now: context.date,
+                                        store: store, day: day.start, nextDay: day.end, hourHeight: hourHeight,
+                                        now: context.date,
+                                        entries: weekEntries.filter {
+                                            $0.start < day.end && ($0.end ?? context.date) > day.start
+                                        },
                                         dragged: $dragged
                                     )
-                                    .zIndex(
-                                        draggedDay.map { store.calendar.isDate($0, inSameDayAs: day) } == true ? 1 : 0)
+                                    .zIndex(draggedDay.map { day.contains($0) } == true ? 1 : 0)
                                 }
                             }
                             .padding(.top, 10).padding(.trailing, 12)
@@ -77,11 +89,10 @@ struct CalendarView: View {
             Text(text)
         }
     }
-    private func dayHeader(_ day: Date) -> some View {
+    private func dayHeader(_ interval: DateInterval, entries: [TimeEntry]) -> some View {
+        let day = interval.start
         let today = store.calendar.isDateInToday(day)
-        let seconds = store.trackedSeconds(
-            store.workspace.entries.filter { store.projectFilter == nil || $0.projectID == store.projectFilter },
-            in: DateInterval(start: day, end: store.calendar.date(byAdding: .day, value: 1, to: day)!))
+        let seconds = store.trackedSeconds(entries, in: interval)
         return VStack(spacing: 4) {
             HStack(spacing: 6) {
                 Text(day.formatted(.dateTime.weekday(.abbreviated)))
@@ -103,25 +114,20 @@ struct CalendarView: View {
 private struct DayColumn: View {
     let store: AppStore
     let day: Date
+    let nextDay: Date
     let hourHeight: CGFloat
     let now: Date
+    /// Entries overlapping this day.
+    let entries: [TimeEntry]
     @Binding var dragged: UUID?
-    private var nextDay: Date { store.calendar.date(byAdding: .day, value: 1, to: day)! }
-    private var entries: [TimeEntry] {
-        store.workspace.entries.filter {
-            $0.start < nextDay && ($0.end ?? now) > day
-                && (store.projectFilter == nil || $0.projectID == store.projectFilter)
-        }
-    }
-    private var clipped: [TimeEntry] {
-        entries.map { entry in
+    var body: some View {
+        let byID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        let clipped = entries.map { entry in
             var copy = entry
             copy.start = max(entry.start, day)
             copy.end = min(entry.end ?? now, nextDay)
             return copy
         }
-    }
-    var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(
@@ -140,7 +146,7 @@ private struct DayColumn: View {
                     store.entryEditor = EntryEditorRequest(start: date)
                 }
                 ForEach(CalendarLayout.slots(for: clipped, now: now)) { slot in
-                    if let entry = entries.first(where: { $0.id == slot.id }) {
+                    if let entry = byID[slot.id] {
                         let top = offset(max(entry.start, day))
                         let bottom =
                             min(entry.end ?? now, nextDay) >= nextDay ? 24 * hourHeight : offset(entry.end ?? now)
@@ -182,8 +188,8 @@ private struct CalendarEntry: View {
     @State private var translation: CGSize = .zero
     @State private var resize: CGFloat = 0
     @State private var hovered = false
-    private var project: Project? { store.workspace.project(entry.projectID) }
     var body: some View {
+        let project = store.workspace.project(entry.projectID)
         let tint = project?.color.tint ?? Theme.accent
         let dragging = translation != .zero || resize != 0
         GeometryReader { geometry in
@@ -249,7 +255,7 @@ private struct CalendarEntry: View {
             .onHover { hovered = $0 }
             .contextMenu {
                 Button("Modifier…", systemImage: "pencil") { store.entryEditor = EntryEditorRequest(entry: entry) }
-                Button("Reprendre", systemImage: "play") { store.resume(entry) }.disabled(project?.archived ?? true)
+                Button("Reprendre", systemImage: "play") { store.resume(entry) }.disabled(!store.canResume(entry))
                 Divider()
                 Button("Supprimer", systemImage: "trash", role: .destructive) { store.delete(entry) }
             }
@@ -260,7 +266,7 @@ private struct CalendarEntry: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { store.entryEditor = EntryEditorRequest(entry: entry) }
             .help(
-                "\(entry.title)\n\(Display.time(entry.start, calendar: store.calendar)) – \(entry.end.map { Display.time($0, calendar: store.calendar) } ?? "en cours")\nCliquer pour modifier"
+                "\(entry.displayTitle)\n\(Display.timeRange(entry, calendar: store.calendar))\nCliquer pour modifier"
             )
         }
     }

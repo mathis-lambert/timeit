@@ -23,11 +23,6 @@ enum Motion {
 }
 
 extension Color {
-    init(hex: UInt32) {
-        self.init(
-            .sRGB, red: Double((hex >> 16) & 255) / 255, green: Double((hex >> 8) & 255) / 255,
-            blue: Double(hex & 255) / 255, opacity: 1)
-    }
     init(light: UInt32, dark: UInt32) {
         self.init(
             nsColor: NSColor(name: nil) { appearance in
@@ -74,6 +69,21 @@ enum Display {
     }
     static func time(_ date: Date, calendar: Calendar) -> String {
         date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: calendar.timeZone))
+    }
+    static func timeRange(_ entry: TimeEntry, calendar: Calendar) -> String {
+        "\(time(entry.start, calendar: calendar)) – \(entry.end.map { time($0, calendar: calendar) } ?? "en cours")"
+    }
+}
+
+extension TimeEntry {
+    var displayTitle: String { title.isEmpty ? "Sans description" : title }
+}
+
+extension Workspace {
+    /// "Client · Project", omitting whichever part is missing.
+    func label(forProject id: UUID, separator: String = " · ") -> String {
+        let project = project(id)
+        return [project.flatMap(client(for:))?.name, project?.name].compactMap { $0 }.joined(separator: separator)
     }
 }
 
@@ -169,9 +179,9 @@ struct KeyCap: View {
 
 struct ProgressRing: View {
     let value: Double
-    var tint: Color = Theme.accent
-    var size: CGFloat = 36
-    var line: CGFloat = 4
+    private let tint = Theme.accent
+    private let size: CGFloat = 36
+    private let line: CGFloat = 4
     var body: some View {
         ZStack {
             Circle().stroke(tint.opacity(0.15), lineWidth: line)
