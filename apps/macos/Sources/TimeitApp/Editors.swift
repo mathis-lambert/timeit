@@ -35,7 +35,9 @@ struct EntryEditor: View {
         _title = State(initialValue: request.entry?.title ?? "")
         _projectID = State(initialValue: projectID)
         _start = State(initialValue: request.entry?.start ?? request.start ?? .now.addingTimeInterval(-3600))
-        _end = State(initialValue: request.entry?.end ?? min(.now, (request.start ?? .now).addingTimeInterval(3600)))
+        _end = State(
+            initialValue: request.entry?.end ?? request.end
+                ?? min(.now, (request.start ?? .now).addingTimeInterval(3600)))
         _running = State(initialValue: editsRunningEntry)
         _billable = State(
             initialValue: request.entry?.billable ?? projectID.flatMap(store.workspace.project)?.billable ?? true)

@@ -92,6 +92,19 @@ public enum EntryValidation {
 }
 
 public enum CalendarLayout {
+    /// Minutes since midnight at a vertical offset in a day column, snapped to the quarter hour.
+    public static func quarterHour(atY y: Double, hourHeight: Double) -> Int {
+        min(24 * 60, max(0, Int((y / hourHeight * 4).rounded()) * 15))
+    }
+
+    /// The minutes a vertical drag covers in a day column: snapped, ordered, at least a quarter hour long.
+    public static func drawnRange(fromY start: Double, toY end: Double, hourHeight: Double) -> ClosedRange<Int> {
+        let a = quarterHour(atY: start, hourHeight: hourHeight)
+        let b = quarterHour(atY: end, hourHeight: hourHeight)
+        let lower = min(a, b, 24 * 60 - 15)
+        return lower...max(a, b, lower + 15)
+    }
+
     public struct Slot: Identifiable, Equatable, Sendable {
         public let id: UUID
         public let column: Int

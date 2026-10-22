@@ -30,7 +30,9 @@ enum ReportPeriod {
 struct EntryEditorRequest: Identifiable {
     let id = UUID()
     var entry: TimeEntry?
+    /// Prefilled times for a new session, from a click or a drag in the calendar.
     var start: Date?
+    var end: Date?
 }
 struct ProjectEditorRequest: Identifiable {
     let id = UUID()

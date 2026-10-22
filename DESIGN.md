@@ -24,7 +24,7 @@ System backgrounds and labels everywhere. The accent marks selection and the pri
 - **Sidebar**: screens, then projects with their color dot and weekly time (click filters, context menu edits or starts). Sync status sits in a footnote at the bottom, never an action.
 - **Toolbar**: on every screen, the running timer (project, elapsed time, Stop), the project filter when set, "Quitter l'exemple" in the example workspace, the palette and Add. Each screen adds its own items: period controls (overview, calendar, reports), Actifs/Archives and New project (projects), Export (reports).
 - **Overview**: the composer (description field, project popup, Démarrer), the metrics strip with goal progress, the weekly chart beside the breakdown, sessions grouped by day.
-- **Calendar**: full bleed like Calendar, day totals in the header, tinted events, a thin "now" line.
+- **Calendar**: full bleed like Calendar, day totals in the header, tinted events, a thin "now" line. Dragging across empty time draws a session with a dashed outline snapped to quarter hours, then opens the session editor on those times; dragging an event shows its landing spot the same way.
 - **Projects and reports**: native tables with numeric columns aligned to the trailing edge.
 
 ## Glass (Glass.swift)

@@ -152,3 +152,12 @@ private func project(currency: String = "EUR", rate: String = "100") -> Project 
     #expect(shrunk.days == 0)
     #expect(shrunk.applied(to: entry, calendar: utc).duration() == CalendarMove.minimumDuration)
 }
+
+@Test func drawingInTheCalendarSnapsToQuarterHoursInEitherDirection() {
+    // 60 pt per hour: 9:05 down to 10:38 and the same drag upward give 9:00–10:45.
+    #expect(CalendarLayout.drawnRange(fromY: 545, toY: 638, hourHeight: 60) == 540...645)
+    #expect(CalendarLayout.drawnRange(fromY: 638, toY: 545, hourHeight: 60) == 540...645)
+    // A short drag still covers a quarter hour, and the day's end is a hard limit.
+    #expect(CalendarLayout.drawnRange(fromY: 600, toY: 603, hourHeight: 60) == 600...615)
+    #expect(CalendarLayout.drawnRange(fromY: 1430, toY: 1500, hourHeight: 60) == 1425...1440)
+}

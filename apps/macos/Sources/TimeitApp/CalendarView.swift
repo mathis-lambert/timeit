@@ -97,6 +97,8 @@ private struct DayColumn: View {
     /// Entries overlapping this day.
     let entries: [TimeEntry]
     @Binding var drag: CalendarDrag?
+    /// Minutes since midnight covered by a drag on empty space, while it is drawn.
+    @State private var drawing: ClosedRange<Int>?
     var body: some View {
         let preview = drag.map { $0.move.applied(to: $0.entry, calendar: store.calendar) }
         let byID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
@@ -116,13 +118,25 @@ private struct DayColumn: View {
                     Rectangle().fill(Theme.hairline).frame(height: 0.5).offset(y: CGFloat(hour) * hourHeight)
                 }
                 Rectangle().fill(Theme.hairline).frame(width: 0.5)
-                Color.clear.contentShape(Rectangle()).onTapGesture(count: 2, coordinateSpace: .local) { point in
-                    let minute = min(1425, max(0, Int((point.y / hourHeight * 60 / 15).rounded()) * 15))
-                    guard let date = store.calendar.date(byAdding: .minute, value: minute, to: day), date < .now else {
-                        return
+                // Empty space: drag to draw a session, or double-click to add one at that time.
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture(count: 2, coordinateSpace: .local) { point in
+                        let minute = min(24 * 60 - 15, CalendarLayout.quarterHour(atY: point.y, hourHeight: hourHeight))
+                        guard let start = date(atMinute: minute), start < .now else { return }
+                        store.entryEditor = EntryEditorRequest(start: start)
                     }
-                    store.entryEditor = EntryEditorRequest(start: date)
-                }
+                    .gesture(
+                        DragGesture(minimumDistance: 4, coordinateSpace: .local)
+                            .onChanged { value in
+                                let range = CalendarLayout.drawnRange(
+                                    fromY: value.startLocation.y, toY: value.location.y, hourHeight: hourHeight)
+                                if range != drawing { drawing = range }
+                            }
+                            .onEnded { _ in
+                                if let drawing { addSession(covering: drawing) }
+                                drawing = nil
+                            }
+                    )
                 ForEach(CalendarLayout.slots(for: clipped, now: now)) { slot in
                     if let entry = byID[slot.id] {
                         let top = offset(max(entry.start, day))
@@ -143,10 +157,27 @@ private struct DayColumn: View {
                 if let preview, let end = preview.end, preview.start < nextDay, end > day {
                     let top = offset(max(preview.start, day))
                     let bottom = end >= nextDay ? 24 * hourHeight : offset(end)
-                    DropPreview(store: store, entry: preview)
-                        .frame(width: geometry.size.width - 8, height: max(28, bottom - top - 3))
-                        .position(x: geometry.size.width / 2, y: top + max(28, bottom - top - 3) / 2)
-                        .allowsHitTesting(false)
+                    DropPreview(
+                        label: Display.timeRange(preview, calendar: store.calendar),
+                        tint: store.workspace.project(preview.projectID)?.color.tint ?? Theme.accent
+                    )
+                    .frame(width: geometry.size.width - 8, height: max(28, bottom - top - 3))
+                    .position(x: geometry.size.width / 2, y: top + max(28, bottom - top - 3) / 2)
+                    .allowsHitTesting(false)
+                }
+                if let drawing, let start = date(atMinute: drawing.lowerBound),
+                    let end = date(atMinute: drawing.upperBound)
+                {
+                    let top = CGFloat(drawing.lowerBound) / 60 * hourHeight
+                    let height = CGFloat(drawing.count - 1) / 60 * hourHeight
+                    DropPreview(
+                        label:
+                            "\(Display.time(start, calendar: store.calendar)) – \(Display.time(end, calendar: store.calendar))",
+                        tint: Theme.accent
+                    )
+                    .frame(width: geometry.size.width - 8, height: max(20, height - 3))
+                    .position(x: geometry.size.width / 2, y: top + max(20, height - 3) / 2)
+                    .allowsHitTesting(false)
                 }
                 if store.calendar.isDateInToday(day) {
                     HStack(spacing: 0) {
@@ -162,16 +193,26 @@ private struct DayColumn: View {
         let components = store.calendar.dateComponents([.hour, .minute], from: date)
         return (CGFloat(components.hour ?? 0) + CGFloat(components.minute ?? 0) / 60) * hourHeight
     }
+    private func date(atMinute minute: Int) -> Date? {
+        store.calendar.date(byAdding: .minute, value: minute, to: day)
+    }
+    /// Opens the session editor on the drawn times. Sessions cannot reach into the future, so the end stops at now.
+    private func addSession(covering minutes: ClosedRange<Int>) {
+        guard let start = date(atMinute: minutes.lowerBound), let end = date(atMinute: minutes.upperBound),
+            start < .now
+        else { return }
+        store.entryEditor = EntryEditorRequest(start: start, end: min(end, .now))
+    }
 }
 
+/// Where a session will be: the landing spot of a moved event, or a session being drawn.
 private struct DropPreview: View {
-    let store: AppStore
-    let entry: TimeEntry
+    let label: String
+    let tint: Color
     var body: some View {
-        let tint = store.workspace.project(entry.projectID)?.color.tint ?? Theme.accent
-        Text(Display.timeRange(entry, calendar: store.calendar))
+        Text(label)
             .font(.caption.weight(.semibold)).monospacedDigit()
-            .padding(.horizontal, 7).padding(.vertical, 5)
+            .padding(.horizontal, 7).padding(.vertical, 4)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(

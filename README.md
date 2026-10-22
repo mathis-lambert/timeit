@@ -50,7 +50,7 @@ Local data: `~/Library/Application Support/Timeit/timeit.sqlite`.
 | ⌘N / ⌘⇧N | New session / new project |
 | ⌘Z | Undo a deleted session |
 
-In the calendar, double-click an empty slot to add a session, drag an event to move it and drag its bottom edge to resize it. Every drag has a form alternative. Closing the window keeps the menu-bar app running.
+In the calendar, drag across empty time to draw a session (or double-click to add one), drag an event to move it and drag its bottom edge to resize it. Every drag has a form alternative. Closing the window keeps the menu-bar app running.
 
 ## Run the backend locally
 
