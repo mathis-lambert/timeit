@@ -169,8 +169,7 @@ public enum WireFormat {
         let result = JSONDecoder()
         result.dateDecodingStrategy = .custom { decoder in
             let value = try decoder.singleValueContainer().decode(String.self)
-            if let date = try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(value) { return date }
-            return try Date.ISO8601FormatStyle().parse(value)
+            return try Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(value)
         }
         return result
     }

@@ -28,12 +28,13 @@ struct TimeitApp: App {
         .commands {
             TrackingCommands(store: store)
             CommandGroup(replacing: .newItem) {
-                Button("Nouvelle session…") { store.entryEditor = EntryEditorRequest() }.keyboardShortcut("n")
+                Button("Nouvelle session…") { store.entryEditor = EntryEditorRequest() }.keyboardShortcut(.newSession)
                 Button("Nouveau projet…") { store.projectEditor = ProjectEditorRequest() }.keyboardShortcut(
-                    "n", modifiers: [.command, .shift])
+                    .newProject)
             }
             CommandGroup(replacing: .undoRedo) {
-                Button("Annuler la suppression") { store.undoDelete() }.keyboardShortcut("z").disabled(!store.canUndo)
+                Button("Annuler la suppression") { store.undoDelete() }.keyboardShortcut(.undoDelete).disabled(
+                    !store.canUndo)
             }
         }
         MenuBarExtra("Timeit", systemImage: store.running == nil ? "circle.dotted" : "record.circle") {
@@ -49,17 +50,17 @@ private struct TrackingCommands: Commands {
     var body: some Commands {
         CommandMenu("Suivi") {
             Button(store.running == nil ? "Démarrer le timer" : "Arrêter le timer") { store.toggleTimer() }
-                .keyboardShortcut(.return, modifiers: .command)
+                .keyboardShortcut(.toggleTimer)
             Button("Palette de commandes…") {
                 // The palette lives in the main window, so bring it back first.
                 openWindow(id: "main")
                 store.showLauncher = true
             }
-            .keyboardShortcut("k")
+            .keyboardShortcut(.palette)
             Divider()
-            Button("Synchroniser") { Task { await store.synchronize() } }.keyboardShortcut("r").disabled(
+            Button("Synchroniser") { Task { await store.synchronize() } }.keyboardShortcut(.synchronize).disabled(
                 !store.connected)
-            Button("Revenir à aujourd’hui") { store.anchorDate = .now }.keyboardShortcut("t")
+            Button("Revenir à aujourd’hui") { store.anchorDate = .now }.keyboardShortcut(.today)
         }
     }
 }

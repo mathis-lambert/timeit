@@ -138,3 +138,17 @@ private func project(currency: String = "EUR", rate: String = "100") -> Project 
             for: TimeEntry(project: project(), title: "Invalid", start: start, end: start, policy: TaxPolicy()),
             now: start) != nil)
 }
+
+@Test func calendarMovesSnapToQuarterHoursAndKeepAMinimumLength() {
+    let start = date("2026-10-19T09:00:00Z")
+    let entry = TimeEntry(
+        project: project(), title: "Drag", start: start, end: start.addingTimeInterval(3600), policy: TaxPolicy())
+    let move = CalendarMove(dx: 290, dy: 37, hourHeight: 60, dayWidth: 140, resizing: false)
+    #expect(move == CalendarMove(minutes: 30, days: 2))
+    let moved = move.applied(to: entry, calendar: utc)
+    #expect(moved.start == date("2026-10-21T09:30:00Z"))
+    #expect(moved.duration() == 3600)
+    let shrunk = CalendarMove(dx: 400, dy: -200, hourHeight: 60, dayWidth: 140, resizing: true)
+    #expect(shrunk.days == 0)
+    #expect(shrunk.applied(to: entry, calendar: utc).duration() == CalendarMove.minimumDuration)
+}

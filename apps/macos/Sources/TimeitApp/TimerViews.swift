@@ -240,67 +240,8 @@ struct CommandPalette: View {
     /// Weekly totals shown next to projects; computed once per opening, not per keystroke.
     @State private var weekSeconds: [UUID: TimeInterval] = [:]
 
-    private enum Section: String {
-        case timer = "Timer"
-        case start = "Démarrer"
-        case actions = "Actions"
-    }
-
-    private struct Command: Identifiable {
-        let id: String
-        let section: Section
-        let title: String
-        let subtitle: String
-        let symbol: String
-        var tint: Color = .secondary
-        var shortcut: String? = nil
-        var detail: String? = nil
-        let run: () -> Void
-    }
-
-    private var commands: [Command] {
-        let query = store.launcherQuery.trimmingCharacters(in: .whitespaces)
-        func matches(_ values: String...) -> Bool {
-            query.isEmpty || values.contains { $0.localizedStandardContains(query) }
-        }
-        var result: [Command] = []
-        if let entry = store.running, matches("arrêter", "stop", "timer") {
-            result.append(
-                Command(
-                    id: "stop", section: .timer, title: "Arrêter le timer", subtitle: entry.displayTitle,
-                    symbol: "stop.fill", tint: Theme.accent, shortcut: "⌘↩", run: store.stop))
-        }
-        for project in store.workspace.activeProjects {
-            let client = store.workspace.client(for: project)?.name ?? ""
-            guard matches(project.name, client) else { continue }
-            let week = weekSeconds[project.id] ?? 0
-            result.append(
-                Command(
-                    id: project.id.uuidString, section: .start, title: project.name, subtitle: client,
-                    symbol: "circle.fill", tint: project.color.tint, detail: week > 0 ? Display.duration(week) : nil
-                ) { store.start(project: project) })
-        }
-        let actions = [
-            Command(
-                id: "new-session", section: .actions, title: "Nouvelle session", subtitle: "Ajouter du temps passé",
-                symbol: "plus", shortcut: "⌘N"
-            ) { store.entryEditor = EntryEditorRequest() },
-            Command(
-                id: "new-project", section: .actions, title: "Nouveau projet", subtitle: "Client, tarif, couleur",
-                symbol: "folder.badge.plus", shortcut: "⌘⇧N"
-            ) { store.projectEditor = ProjectEditorRequest() },
-        ]
-        let screens = Screen.allCases.map { screen in
-            Command(
-                id: screen.rawValue, section: .actions, title: screen.title, subtitle: "Aller à", symbol: screen.symbol
-            ) { store.screen = screen }
-        }
-        result += (actions + screens).filter { matches($0.title, $0.subtitle) }
-        return result
-    }
-
     var body: some View {
-        let items = commands
+        let items = store.paletteCommands(matching: store.launcherQuery, weekSeconds: weekSeconds)
         ZStack(alignment: .top) {
             Color.black.opacity(0.12).ignoresSafeArea()
                 .onTapGesture(perform: close)
@@ -381,14 +322,14 @@ struct CommandPalette: View {
         .onChange(of: store.launcherQuery) { selection = 0 }
     }
 
-    private func row(_ item: Command, selected: Bool) -> some View {
+    private func row(_ item: PaletteCommand, selected: Bool) -> some View {
         HStack(spacing: 10) {
             Image(systemName: item.symbol).font(.system(size: item.section == .start ? 8 : 13))
                 .foregroundStyle(item.tint).frame(width: 20)
             Text(item.title).font(.system(size: 13.5)).lineLimit(1)
             Text(item.subtitle).font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(1)
             Spacer(minLength: 8)
-            if let shortcut = item.shortcut { KeyCap(shortcut) }
+            if let shortcut = item.shortcut { KeyCap(shortcut.label) }
             if let detail = item.detail {
                 Text(detail).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.tertiary)
             }
@@ -405,11 +346,9 @@ struct CommandPalette: View {
         guard count > 0 else { return }
         selection = (selection + delta + count) % count
     }
-    private func run(_ items: [Command]) {
+    private func run(_ items: [PaletteCommand]) {
         guard items.indices.contains(selection) else { return }
-        let command = items[selection]
-        close()
-        command.run()
+        store.perform(items[selection])
     }
     private func close() {
         store.showLauncher = false

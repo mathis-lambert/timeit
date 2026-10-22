@@ -41,13 +41,6 @@ Motion only where it explains a state change: the composer morph and the palette
 
 Light and dark through semantic colors. Color always sits next to text. Icon-only buttons have labels and help. Calendar drags have form alternatives. Native focus and VoiceOver labels; hover-revealed actions are also reachable through context menus and accessibility actions.
 
-## Slop audit (2026-10-21)
+## Audit
 
-Removed after review: gradient text on figures, side accent rails on rows and events, icon tiles on cards and rows, blurred glow blobs, colored glowing shadows, a mesh-gradient backdrop, glass on content cards, 22 pt radii, bouncy springs, staggered fade-ins, an eyebrow above every title, a cream background, a custom segmented control in place of the native one, and looping pulses. Remaining checks are native (SF as the primary face, Liquid Glass) and intentional for a macOS app.
-
-## Changelog
-
-- 2026-10-20: Initial native direction and interaction contracts.
-- 2026-10-20: Render audit, calendar sizing/foreground fixes, project legend and menu-bar runtime correction.
-- 2026-10-20: First Liquid Glass overhaul, deployment target raised to macOS 26.
-- 2026-10-21: De-slop pass: glass limited to controls, flat content surfaces, restrained motion, no looping effects, a dense project list, render-cost regression test.
+Checked against the frontend-design-deslop checklist (2026-10-22): no gradients, glows, side accent rails, icon tiles, decorative blur, bouncy or looping motion, or glass on content. SF as the primary face and Liquid Glass on controls are deliberate native choices.

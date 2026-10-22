@@ -8,13 +8,20 @@ There are two runtime components: the native app and one HTTP service. No micros
 
 ## Local persistence
 
-GRDB wraps SQLite transactions and schema migrations. The MVP saves a versioned JSON workspace and sync metadata atomically in SQLite. This deliberately keeps local and remote document semantics identical. FX cache and pending mutations are saved alongside the document. The store is confined to the main actor; expensive networking is asynchronous. Failed writes do not update the visible workspace.
+GRDB wraps SQLite. The workspace is stored as the same versioned JSON document the server receives, which keeps local and remote semantics identical. Four tables split it by how often each part changes:
+
+- `workspace`: the document and its local version, rewritten on every edit (`saveEdit`).
+- `sync`: revision, uploaded version, owner and the exact pending upload, rewritten by sync steps (`saveSync`).
+- `rate`: one row per cached exchange rate (`saveRates`).
+- `conflict`: backups of documents replaced while resolving a conflict.
+
+Applying a remote document or resolving a conflict writes the document and sync rows in one transaction. The store is confined to the main actor; networking is asynchronous. A failed write leaves the visible workspace unchanged.
 
 The JSON format is schema version 1. Newer unsupported schema versions fail explicitly. Add versioned migrations when evolving the wire format; do not silently reset data. Session start/end timestamps use ISO 8601 instants; account timezone determines report days and week boundaries.
 
 ## Synchronization
 
-The first MVP exchanges a complete personal workspace, with optimistic revision checks. This is appropriate for a small solo workspace and explicit occasional conflicts. The server limits payloads to 10 MiB / 20,000 entries. It is not a per-record incremental replication engine.
+The app exchanges a complete personal workspace, with optimistic revision checks. This is appropriate for a small solo workspace and explicit occasional conflicts. The server limits payloads to 10 MiB / 20,000 entries. It is not a per-record incremental replication engine.
 
 - GET `/v1/workspace`: `{ revision, document }`, null document for a new account.
 - PUT `/v1/workspace`: `{ baseRevision, mutationID, document }`.
@@ -25,7 +32,7 @@ The first MVP exchanges a complete personal workspace, with optimistic revision 
 - Authentication is bound to server URL + user subject so switching accounts cannot silently merge workspaces.
 - Example workspaces never synchronize. Connection generations prevent stale network responses from replacing a newly selected workspace.
 
-Deliberate boundary: conflict resolution replaces a document after user choice; it does not merge individual sessions automatically. PowerSync should be evaluated if incremental replication, shared workspaces or frequent concurrent editing become actual requirements. Avoid installing a replication platform solely to hide this explicit first-version boundary.
+Deliberate boundary: conflict resolution replaces a document after user choice; it does not merge individual sessions automatically. PowerSync should be evaluated if incremental replication, shared workspaces or frequent concurrent editing become actual requirements. Avoid installing a replication platform solely to hide this explicit boundary.
 
 ## Money and time
 
@@ -33,13 +40,13 @@ Amounts and percentages are decimal strings on the wire. Swift uses Foundation D
 
 Starting another timer ends the current one at the same instant. The API rejects duplicate running timers, invalid references, duplicate IDs, future sessions, reversed dates, unknown timezones and combined deductions above 100%. Overlapping manual sessions remain visible rather than being silently altered.
 
-The editable calendar lays events out by local wall-clock time. Its first version is optimized for ordinary work days; repeated/missing DST hours need a dedicated UI representation before overnight DST editing can be claimed complete. Financial duration calculations already use actual elapsed time.
+The editable calendar lays events out by local wall-clock time and is optimized for ordinary work days; repeated/missing DST hours need a dedicated UI representation before overnight DST editing can be claimed complete. Drags snap to quarter hours and whole days through `CalendarMove`, and the grid draws the landing spot in the destination column before the move is saved. Financial duration calculations already use actual elapsed time.
 
 ## Exchange rates
 
 GET `/v1/exchange-rate?base=USD&quote=EUR&date=YYYY-MM-DD` requires authentication. It calls a fixed Frankfurter URL with a timeout, verifies the pair/date/positive rate, and stores the first accepted observation. Store both requested date and provider date, preserving weekends/holidays. Historical cache values do not silently change after a provider correction. No provider secret or client business data is sent to Frankfurter.
 
-The client fetches missing rates after sync, at most 100 per pass, without blocking local recording. First-version rate access requires the backend connection. Foreign sessions work offline, but their converted totals remain partial until rates arrive.
+The client fetches missing rates after sync, at most 100 per pass, without blocking local recording. Rate access requires the backend connection. Foreign sessions work offline, but their converted totals remain partial until rates arrive.
 
 ## Identity and operations
 

@@ -77,3 +77,23 @@ import TimeitCore
     store.toggleTimer()
     #expect(store.running?.projectID == store.workspace.activeProjects.first?.id)
 }
+
+@MainActor @Test func paletteFiltersProjectsAndActionsAndRunsThem() throws {
+    let store = AppStore(database: try LocalDatabase(), demo: true)
+    let project = store.workspace.activeProjects[0]
+    let matches = store.paletteCommands(matching: project.name, weekSeconds: [:])
+    #expect(matches.first?.title == project.name)
+    #expect(
+        matches.allSatisfy {
+            $0.title.localizedStandardContains(project.name) || $0.subtitle.localizedStandardContains(project.name)
+        })
+    store.showLauncher = true
+    store.perform(try #require(matches.first))
+    #expect(store.running?.projectID == project.id)
+    #expect(!store.showLauncher)
+    let stop = try #require(store.paletteCommands(matching: "", weekSeconds: [:]).first)
+    #expect(stop.section == .timer)
+    store.perform(stop)
+    #expect(store.running == nil)
+    #expect(store.paletteCommands(matching: "Calendrier", weekSeconds: [:]).map(\.title) == ["Calendrier"])
+}

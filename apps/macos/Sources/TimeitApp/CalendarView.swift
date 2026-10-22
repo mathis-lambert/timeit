@@ -1,13 +1,16 @@
 import SwiftUI
 import TimeitCore
 
+/// The event being dragged and where it would land, owned by the grid.
+private struct CalendarDrag {
+    let entry: TimeEntry
+    var move: CalendarMove
+}
+
 struct CalendarView: View {
     @Bindable var store: AppStore
-    @State private var dragged: UUID?
+    @State private var drag: CalendarDrag?
     private let hourHeight: CGFloat = 60
-    private var draggedDay: Date? {
-        dragged.flatMap { id in store.workspace.entries.first { $0.id == id }?.start }
-    }
     private var days: [DateInterval] {
         let calendar = store.calendar
         return (0..<7).map { offset in
@@ -56,9 +59,8 @@ struct CalendarView: View {
                                         entries: weekEntries.filter {
                                             $0.start < day.end && ($0.end ?? context.date) > day.start
                                         },
-                                        dragged: $dragged
+                                        drag: $drag
                                     )
-                                    .zIndex(draggedDay.map { day.contains($0) } == true ? 1 : 0)
                                 }
                             }
                             .padding(.top, 10).padding(.trailing, 12)
@@ -119,8 +121,9 @@ private struct DayColumn: View {
     let now: Date
     /// Entries overlapping this day.
     let entries: [TimeEntry]
-    @Binding var dragged: UUID?
+    @Binding var drag: CalendarDrag?
     var body: some View {
+        let preview = drag.map { $0.move.applied(to: $0.entry, calendar: store.calendar) }
         let byID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
         let clipped = entries.map { entry in
             var copy = entry
@@ -153,14 +156,22 @@ private struct DayColumn: View {
                         let width = max(20, (geometry.size.width - 8) / CGFloat(slot.columns))
                         CalendarEntry(
                             store: store, entry: entry, hourHeight: hourHeight, dayWidth: geometry.size.width, now: now,
-                            dragged: $dragged
+                            drag: $drag
                         )
-                        .zIndex(dragged == entry.id ? 1 : 0)
                         .frame(width: width - 3, height: max(28, bottom - top - 3))
                         .position(
                             x: 5 + CGFloat(slot.column) * width + (width - 3) / 2,
                             y: top + max(28, bottom - top - 3) / 2)
                     }
+                }
+                // The landing spot is drawn in the column it lands in, so no column needs to sit above another.
+                if let preview, let end = preview.end, preview.start < nextDay, end > day {
+                    let top = offset(max(preview.start, day))
+                    let bottom = end >= nextDay ? 24 * hourHeight : offset(end)
+                    DropPreview(store: store, entry: preview)
+                        .frame(width: geometry.size.width - 8, height: max(28, bottom - top - 3))
+                        .position(x: geometry.size.width / 2, y: top + max(28, bottom - top - 3) / 2)
+                        .allowsHitTesting(false)
                 }
                 if store.calendar.isDateInToday(day) {
                     HStack(spacing: 0) {
@@ -178,20 +189,35 @@ private struct DayColumn: View {
     }
 }
 
+private struct DropPreview: View {
+    let store: AppStore
+    let entry: TimeEntry
+    var body: some View {
+        let tint = store.workspace.project(entry.projectID)?.color.tint ?? Theme.accent
+        Text(Display.timeRange(entry, calendar: store.calendar))
+            .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+            .padding(.horizontal, 7).padding(.vertical, 5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(tint, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            )
+    }
+}
+
 private struct CalendarEntry: View {
     let store: AppStore
     let entry: TimeEntry
     let hourHeight: CGFloat
     let dayWidth: CGFloat
     let now: Date
-    @Binding var dragged: UUID?
-    @State private var translation: CGSize = .zero
-    @State private var resize: CGFloat = 0
+    @Binding var drag: CalendarDrag?
     @State private var hovered = false
     var body: some View {
         let project = store.workspace.project(entry.projectID)
         let tint = project?.color.tint ?? Theme.accent
-        let dragging = translation != .zero || resize != 0
+        let dragging = drag?.entry.id == entry.id
         GeometryReader { geometry in
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.title.isEmpty ? project?.name ?? "Session" : entry.title)
@@ -208,49 +234,16 @@ private struct CalendarEntry: View {
             }
             .padding(.horizontal, 7).padding(.vertical, 5)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(
-                tint.opacity(hovered || dragging ? 0.26 : 0.17),
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-            )
+            .background(tint.opacity(hovered ? 0.26 : 0.17), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .opacity(dragging ? 0.4 : 1)
             .overlay(alignment: .bottom) {
                 if entry.end != nil {
                     Color.clear.frame(height: 8).contentShape(Rectangle())
                         .pointerStyle(.frameResize(position: .bottom))
-                        .highPriorityGesture(
-                            DragGesture(minimumDistance: 3)
-                                .onChanged {
-                                    dragged = entry.id
-                                    resize = $0.translation.height
-                                }
-                                .onEnded { value in
-                                    store.move(
-                                        entry, by: Int((value.translation.height / hourHeight * 4).rounded()) * 15,
-                                        resizing: true)
-                                    resize = 0
-                                    dragged = nil
-                                })
+                        .highPriorityGesture(dragGesture(resizing: true, minimumDistance: 3))
                 }
             }
-            .frame(height: max(28, geometry.size.height + resize), alignment: .top)
-            .opacity(dragging ? 0.9 : 1)
-            .offset(translation)
-            .gesture(
-                DragGesture(minimumDistance: 5)
-                    .onChanged {
-                        guard entry.end != nil else { return }
-                        dragged = entry.id
-                        translation = $0.translation
-                    }
-                    .onEnded { value in
-                        if entry.end != nil {
-                            let minutes = Int((value.translation.height / hourHeight * 4).rounded()) * 15
-                            let days = Int((value.translation.width / dayWidth).rounded())
-                            store.move(entry, by: minutes, days: days)
-                        }
-                        translation = .zero
-                        dragged = nil
-                    }
-            )
+            .gesture(dragGesture(resizing: false, minimumDistance: 5))
             .onTapGesture { store.entryEditor = EntryEditorRequest(entry: entry) }
             .onHover { hovered = $0 }
             .contextMenu {
@@ -269,5 +262,21 @@ private struct CalendarEntry: View {
                 "\(entry.displayTitle)\n\(Display.timeRange(entry, calendar: store.calendar))\nCliquer pour modifier"
             )
         }
+    }
+
+    /// Finished entries can be moved or resized; the running one keeps its live end.
+    private func dragGesture(resizing: Bool, minimumDistance: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: minimumDistance)
+            .onChanged { value in
+                guard entry.end != nil else { return }
+                let move = CalendarMove(
+                    dx: value.translation.width, dy: value.translation.height, hourHeight: hourHeight,
+                    dayWidth: dayWidth, resizing: resizing)
+                if drag?.move != move { drag = CalendarDrag(entry: entry, move: move) }
+            }
+            .onEnded { _ in
+                if let drag, drag.entry.id == entry.id { store.move(entry, drag.move) }
+                drag = nil
+            }
     }
 }

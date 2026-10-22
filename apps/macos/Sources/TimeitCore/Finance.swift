@@ -122,3 +122,41 @@ public enum CalendarLayout {
         return result
     }
 }
+
+/// A calendar drag snapped to the 15-minute grid and whole days.
+public struct CalendarMove: Equatable, Sendable {
+    public var minutes: Int
+    public var days: Int
+    public var resizing: Bool
+
+    /// Minimum length a resize can leave.
+    public static let minimumDuration: TimeInterval = 15 * 60
+
+    public init(minutes: Int, days: Int = 0, resizing: Bool = false) {
+        self.minutes = minutes
+        self.days = days
+        self.resizing = resizing
+    }
+
+    /// Snaps a pointer translation, in points, to quarter hours and days.
+    public init(dx: Double, dy: Double, hourHeight: Double, dayWidth: Double, resizing: Bool) {
+        self.init(
+            minutes: Int((dy / hourHeight * 4).rounded()) * 15,
+            days: resizing ? 0 : Int((dx / dayWidth).rounded()), resizing: resizing)
+    }
+
+    /// The entry after the move. Resizing changes the end only; moving keeps the duration.
+    public func applied(to entry: TimeEntry, calendar: Calendar) -> TimeEntry {
+        guard let end = entry.end else { return entry }
+        var moved = entry
+        if resizing {
+            moved.end = max(
+                entry.start.addingTimeInterval(Self.minimumDuration), end.addingTimeInterval(Double(minutes) * 60))
+        } else {
+            moved.start = calendar.date(byAdding: .day, value: days, to: entry.start)!.addingTimeInterval(
+                Double(minutes) * 60)
+            moved.end = moved.start.addingTimeInterval(entry.duration())
+        }
+        return moved
+    }
+}

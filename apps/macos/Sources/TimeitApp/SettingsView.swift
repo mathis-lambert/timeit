@@ -97,10 +97,7 @@ struct SettingsView: View {
                     KeyboardShortcuts.Recorder("Démarrer / arrêter le timer", name: .toggleTimer)
                 }
                 Section("Raccourcis dans l’app") {
-                    LabeledContent("Nouvelle session", value: "⌘N")
-                    LabeledContent("Choisir un projet", value: "⌘K")
-                    LabeledContent("Démarrer / arrêter", value: "⌘↩")
-                    LabeledContent("Annuler une suppression", value: "⌘Z")
+                    ForEach(AppShortcut.allCases, id: \.self) { LabeledContent($0.title, value: $0.label) }
                 }
             }.formStyle(.grouped).tabItem { Label("Général", systemImage: "slider.horizontal.3") }
         }.padding(16).frame(width: 570, height: 470)

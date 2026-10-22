@@ -23,9 +23,8 @@ enum Screen: String, CaseIterable, Identifiable {
         }
     }
 }
-enum ReportPeriod: String, CaseIterable {
-    case week = "Cette semaine"
-    case month = "Ce mois-ci"
+enum ReportPeriod {
+    case week, month
     var component: Calendar.Component { self == .week ? .weekOfYear : .month }
 }
 struct EntryEditorRequest: Identifiable {
@@ -163,7 +162,7 @@ final class AppStore {
         body(&next.document)
         next.sync.localVersion += 1
         do {
-            try database.save(next)
+            try database.saveEdit(next.document, localVersion: next.sync.localVersion)
             state = next
             scheduleSync()
             return true
@@ -188,7 +187,6 @@ final class AppStore {
         }) {
             timerProjectID = project.id
             timerTitle = ""
-            showLauncher = false
         }
     }
     func stop() {
@@ -238,17 +236,9 @@ final class AppStore {
         if entry.end == nil && running != nil { entry.end = max(.now, entry.start.addingTimeInterval(1)) }
         if change({ $0.entries.append(entry) }) { deletedEntries.removeLast() }
     }
-    func move(_ entry: TimeEntry, by minutes: Int, days: Int = 0, resizing: Bool = false) {
-        guard entry.end != nil else { return }
-        var edited = entry
-        if resizing {
-            edited.end = max(entry.start.addingTimeInterval(900), entry.end!.addingTimeInterval(Double(minutes) * 60))
-        } else {
-            edited.start = calendar.date(byAdding: .day, value: days, to: entry.start)!.addingTimeInterval(
-                Double(minutes) * 60)
-            edited.end = edited.start.addingTimeInterval(entry.duration())
-        }
-        _ = save(entry: edited)
+    func move(_ entry: TimeEntry, _ move: CalendarMove) {
+        guard entry.end != nil, move != CalendarMove(minutes: 0, resizing: move.resizing) else { return }
+        _ = save(entry: move.applied(to: entry, calendar: calendar))
     }
     func save(project: Project, client: Client?) -> Bool {
         let saved = change { document in
@@ -297,6 +287,7 @@ final class AppStore {
             let demo = try LocalDatabase()
             let data = DemoData.make()
             try demo.save(data)
+            try demo.saveRates(data.rates)
             database = demo
             state = data
             isDemo = true
@@ -431,7 +422,7 @@ final class AppStore {
             if state.sync.hasChanges || remote.document == nil {
                 var next = state
                 _ = next.sync.prepareUpload(document: workspace)
-                try database.save(next)
+                try database.saveSync(next.sync)
                 state = next
                 try await sendPending(using: client, database: database, generation: generation)
             }
@@ -464,7 +455,7 @@ final class AppStore {
         var next = state
         next.sync.acknowledge(revision: result.revision)
         next.sync.ownerID = connectionOwner
-        try database.save(next)
+        try database.saveSync(next.sync)
         state = next
     }
     private func refreshRates(using client: APIClient, generation: UUID) async {
@@ -500,7 +491,7 @@ final class AppStore {
             next.rates.removeAll { keys.contains($0.key) }
             next.rates.append(contentsOf: fetched)
             do {
-                try database.save(next)
+                try database.saveRates(fetched)
                 state = next
             } catch {
                 return
@@ -522,7 +513,6 @@ final class AppStore {
     func resolveConflict(useLocal: Bool) {
         guard let remote = conflict, let remoteDocument = remote.document, let database else { return }
         do {
-            try database.preserveConflict(useLocal ? remoteDocument : workspace)
             var next = state
             next.sync.revision = remote.revision
             next.sync.pendingUpload = nil
@@ -533,7 +523,7 @@ final class AppStore {
                 next.sync.localVersion += 1
             }
             next.sync.ownerID = connectionOwner
-            try database.save(next)
+            try database.save(next, preservingConflict: useLocal ? remoteDocument : workspace)
             state = next
             conflict = nil
             Task { await synchronize() }

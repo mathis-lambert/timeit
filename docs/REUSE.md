@@ -17,18 +17,18 @@ Verified 2026-10-20 against upstream repositories, manifests, licenses and publi
 | [decimal.js](https://github.com/MikeMcl/decimal.js) | Decimal normalization | MIT |
 | [Frankfurter](https://frankfurter.dev/) | Historical FX observations | Free public API; caching allowed |
 
-Native frameworks: SwiftUI/AppKit for UI, Charts for charts, Foundation for dates/currencies/Decimal/networking, TabularData for CSV, AppKit for PDF printing, ServiceManagement for launch at login. Native SF fonts and SF Symbols are supplied by the operating system. There are no paid API dependencies in the implemented MVP. Native dependency license notices are copied into the app's Resources/Licenses folder by the packaging script.
+Native frameworks: SwiftUI/AppKit for UI, Charts for charts, Foundation for dates/currencies/Decimal/networking, TabularData for CSV, AppKit for PDF printing, ServiceManagement for launch at login. Native SF fonts and SF Symbols are supplied by the operating system. There are no paid API dependencies. Native dependency license notices are copied into the app's Resources/Licenses folder by the packaging script.
 
 Foundation supplies currency selection; Frankfurter supplies conversions for its supported pairs/dates. At research time its public v2 catalog returned 165 currencies, while broader advertised coverage included historical currencies. Unsupported or unavailable observations leave totals visibly incomplete.
 
 ## Evaluated, not included
 
-- [PowerSync](https://github.com/powersync-ja/powersync-swift): native macOS support and ARM64 server image verified. Swift SDK Apache-2.0; server FSL-1.1-ALv2. GRDB adapter is alpha, including schema-update limitations. Keep as an incremental-sync candidate; do not mix its experimental GRDB adapter into this MVP.
+- [PowerSync](https://github.com/powersync-ja/powersync-swift): native macOS support and ARM64 server image verified. Swift SDK Apache-2.0; server FSL-1.1-ALv2. GRDB adapter is alpha, including schema-update limitations. Keep as an incremental-sync candidate; do not mix its experimental GRDB adapter into the app.
 - [SwiftUiCalendarKit](https://github.com/Haskins-io/SwiftUiCalendarKit): MIT and macOS-compatible, but drag/drop and resizing remain on its ToDo list. The implemented weekly editor needs those interactions, so it uses a focused SwiftUI grid and Foundation Calendar instead.
 - [richardtop/CalendarKit](https://github.com/richardtop/CalendarKit): UIKit-oriented; its package targets iOS/tvOS, not a native AppKit macOS target.
 - [Kimai](https://www.kimai.org/): AGPL time-tracking backend with API/Keycloak SAML support. Customer-level currency model does not match the requested project-level model directly.
 - [solidtime](https://www.solidtime.io/roadmap): AGPL backend; multiple currencies and OIDC were still on the roadmap when checked. Documented rate changes can affect existing time entries.
-- [Urssaf Mon-entreprise API](https://mon-entreprise.urssaf.fr/d%C3%A9veloppeur/api): valuable for optional French regulatory simulations; account-level configurable estimates remain country-neutral in this MVP.
+- [Urssaf Mon-entreprise API](https://mon-entreprise.urssaf.fr/d%C3%A9veloppeur/api): valuable for optional French regulatory simulations; account-level configurable estimates remain country-neutral.
 - [Sparkle](https://sparkle-project.org/): appropriate for a future signed direct distribution, not needed for local bundle generation.
 - [Swift OpenAPI Generator](https://github.com/apple/swift-openapi-generator): appropriate once the API is stabilized. The current wire contract is small; no generated client infrastructure is included yet.
-- EventKit / App Intents / WidgetKit: suitable native integrations for later slices. The MVP's internal calendar does not request access to personal calendar data.
+- EventKit / App Intents / WidgetKit: suitable native integrations for later slices. The internal calendar does not request access to personal calendar data.
