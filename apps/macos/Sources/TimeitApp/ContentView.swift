@@ -87,7 +87,8 @@ struct ContentView: View {
             }
             .font(.system(size: 11.5))
             .padding(.horizontal, 16).padding(.vertical, 9)
-            .glassEffect(.regular, in: .capsule)
+            .glass(.panel, radius: 17)
+            .floatShadow()
             .padding(.bottom, 18)
         }
     }
@@ -179,7 +180,7 @@ private struct Sidebar: View {
                         }
                     }
                     .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .liveLens(tint, radius: 10)
                 }
                 .buttonStyle(.plain)
             }
@@ -309,8 +310,8 @@ struct FilterChip: View {
                     Text(project.name).fontWeight(.medium)
                     Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
                 }
-                .font(.system(size: 11.5)).padding(.horizontal, 10).padding(.vertical, 5)
-                .background(project.color.tint.opacity(0.14), in: Capsule())
+                .font(.system(size: 11.5)).padding(.horizontal, 10).frame(height: 26)
+                .glass(.control, tint: project.color.tint, radius: 13)
             }
             .buttonStyle(.plain)
             .help("Retirer le filtre")

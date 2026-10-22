@@ -131,6 +131,7 @@ private struct ProjectRow: View {
         }
         .padding(.horizontal, 10).padding(.vertical, 10)
         .hoverHighlight()
+        .liveLens(live ? project.color.tint : nil, radius: Theme.rowRadius)
         .onHover { hovered = $0 }
         .onTapGesture(count: 2) { store.projectEditor = ProjectEditorRequest(project: project) }
         .contextMenu {

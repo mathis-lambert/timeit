@@ -40,7 +40,8 @@ Before finishing a change: format, lint, run the tests of every package you touc
 - UI copy is French; code, comments, commits and docs are English.
 - Amounts and percentages are decimal strings on the wire and `Decimal` in Swift. Never use `Double` for money.
 - Durations derive from persisted instants. A UI timer is never the source of elapsed time.
-- Follow `DESIGN.md`: glass only on floating controls, flat content surfaces, one accent, no gradients or glows, motion only for state changes.
+- Follow `DESIGN.md`: flat content surfaces, one accent, no gradients or glows, motion only for state changes.
+- Liquid Glass only through `glass(_:tint:radius:)` and its roles (`selection`, `control`, `accent`, `panel`) in `Glass.swift`; never call `glassEffect` directly. Glass marks what is live or floating, never content.
 - Never add looping animations (`repeatForever`, repeating `symbolEffect`). They recomposite the whole glass window every frame; `runningTimerStaysCheapToRender` fails above 10 % CPU.
 - `TimelineView` only where a value changes over time (running timer); finished rows render static text.
 

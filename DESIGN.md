@@ -20,10 +20,27 @@ Neutral system backgrounds dominate. One accent, ember #D9482A / #F57352 (light/
 
 ## Tokens (Theme.swift)
 
-- Surfaces: content cards use `Theme.surface` (primary at 3.5 %) with a 0.5 pt hairline, no shadow. Glass is reserved for floating controls: timer bar, toolbar, palette, demo badge. Native segmented pickers and control groups provide their own glass.
-- Radius: cards 14, rows 8, timer bar 16.
+- Content surfaces use `card()`: `Theme.surface` (primary at 3.5 %) with a 0.5 pt hairline, no shadow.
+- Radius: cards 14, rows 8, timer bar 16, palette 16.
 - Spacing: gutter 28, 20 between sections, 8–12 inside groups. Content capped at 1160 pt.
-- Motion: `Motion.standard` (smooth, 0.28 s) for the composer morph; `Motion.quick` (ease-out, 0.14 s) for the palette fade.
+- Motion: `Motion.shell` (spring, 0.28 s, bounce 0.08) for glass changing shape, through `shellAnimation(value:)`, which honors Reduce Motion; `Motion.quick` (ease-out, 0.14 s) for the palette fade.
+
+## Glass (Glass.swift)
+
+Liquid Glass goes through one modifier, `glass(_:tint:radius:)`, whose role sets the intensity: the more a surface matters, the more glass it is. No view calls `glassEffect` directly. With Reduce Transparency every surface becomes opaque with a hairline.
+
+| Role | Glass | Used for |
+| --- | --- | --- |
+| `selection` | regular, tint at 14 % (26 % dark), interactive | what is live: the running timer bar, the running session and project rows, the sidebar's running pill, the menu-bar timer; the palette's highlighted command |
+| `control` | regular, tint at 8 % (16 % dark), interactive | the idle composer, the project filter chip |
+| `accent` | regular, fully tinted, interactive | the start and stop buttons |
+| `panel` | regular, untinted | the command palette, the example-workspace badge |
+
+- `liveLens(_:radius:)` puts a `selection` lens behind a row while its project runs, tinted with the project color.
+- The palette clips its results, not its glass, carries `panelShadow()` and a `lightRing`: a fine accent ring and faint halo, with one band of light crossing it from bottom to top in 0.9 s when it opens. The band is driven by one animatable value, so nothing renders once it has passed.
+- The composer and its button share a `GlassEffectContainer` and `glassEffectID`s, so the idle bar morphs into the running timer whatever starts it.
+- Not glass: content cards, charts, tables, the calendar, rows at rest, hover (a flat fill), buttons inside glass surfaces, sheets and Settings (system forms).
+- No light or glow under glass surfaces: it spreads into a smudge on anything larger than a small tile.
 
 ## Layout
 
@@ -35,7 +52,7 @@ Rows highlight on hover; secondary actions (resume, edit, archive) appear on hov
 
 ## Motion and performance
 
-Motion only where it explains a state change: the composer morph and the palette fade. No hover scaling, staggered entrances, bars that grow, bouncy springs or rolling digits. Nothing loops: a repeating effect, even on an 8 pt dot, forces the whole glass window to recomposite every frame (measured at about 100 % CPU while a timer ran, 0.6 % without). `runningTimerStaysCheapToRender` guards this with a 10 % ceiling. The timer ticks through `TimelineView` once per second; finished rows render static text.
+Motion only where it explains a state change: the composer morph, the palette fade and its one-shot light band. No hover scaling, staggered entrances, bars that grow, bouncy springs or rolling digits. Nothing loops: a repeating effect, even on an 8 pt dot, forces the whole glass window to recomposite every frame (measured at about 100 % CPU while a timer ran, 0.6 % without). `runningTimerStaysCheapToRender` guards this with a 10 % ceiling. The timer ticks through `TimelineView` once per second; finished rows render static text.
 
 ## Accessibility
 

@@ -16,10 +16,23 @@ enum Theme {
 }
 
 enum Motion {
-    /// State changes the user waits on: screen content, composer morph, palette.
-    static let standard = Animation.smooth(duration: 0.28)
-    /// Small feedback: hover, selection, press.
+    /// Glass surfaces changing shape: the composer becoming the running timer.
+    static let shell = Animation.spring(duration: 0.28, bounce: 0.08)
+    /// Small feedback: hover, the palette appearing.
     static let quick = Animation.easeOut(duration: 0.14)
+}
+
+extension View {
+    /// Animates `value` changes with the shell spring, or not at all with Reduce Motion.
+    func shellAnimation(value: some Equatable) -> some View { modifier(ShellAnimation(value: value)) }
+}
+
+private struct ShellAnimation<Value: Equatable>: ViewModifier {
+    let value: Value
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func body(content: Content) -> some View {
+        content.animation(reduceMotion ? nil : Motion.shell, value: value)
+    }
 }
 
 extension Color {

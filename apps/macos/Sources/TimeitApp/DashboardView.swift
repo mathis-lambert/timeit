@@ -385,6 +385,7 @@ struct EntryRow: View {
         }
         .padding(.vertical, 8).padding(.horizontal, 8)
         .hoverHighlight()
+        .liveLens(entry.end == nil ? project?.color.tint ?? Theme.accent : nil, radius: Theme.rowRadius)
         .onHover { hovered = $0 }
         .onTapGesture(count: 2) { store.entryEditor = EntryEditorRequest(entry: entry) }
         .contextMenu {

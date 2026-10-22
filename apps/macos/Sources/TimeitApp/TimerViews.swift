@@ -4,10 +4,12 @@ import TimeitCore
 
 // MARK: - Composer
 
-/// The primary surface: an idle composer that morphs into the running timer.
+/// The primary surface: an idle composer that morphs into the running timer, whatever starts or stops it
+/// (button, ⌘↩, the global shortcut, the palette or the menu bar).
 struct TimerComposer: View {
     @Bindable var store: AppStore
     @Namespace private var glass
+    private static let radius: CGFloat = 16
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             HStack(spacing: 10) {
@@ -18,6 +20,7 @@ struct TimerComposer: View {
                 }
             }
         }
+        .shellAnimation(value: store.running?.id)
     }
 
     private var idle: some View {
@@ -31,8 +34,7 @@ struct TimerComposer: View {
                 ProjectChip(store: store)
             }
             .padding(.leading, 16).padding(.trailing, 8).frame(height: 52)
-            .glassEffect(.regular, in: .rect(cornerRadius: 16))
-            .glassEffectID("bar", in: glass)
+            .glass(.control, radius: Self.radius, id: "bar", in: glass)
             Button(action: start) {
                 Image(systemName: "play.fill").font(.system(size: 16, weight: .semibold))
                     .frame(width: 52, height: 52)
@@ -40,8 +42,7 @@ struct TimerComposer: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white)
-            .glassEffect(.regular.tint(Theme.accent).interactive(), in: .circle)
-            .glassEffectID("action", in: glass)
+            .glass(.accent, tint: Theme.accent, radius: 26, id: "action", in: glass)
             .disabled(store.nextTimerProject == nil)
             .help("Démarrer (↩)")
             .accessibilityLabel("Démarrer le timer")
@@ -74,27 +75,21 @@ struct TimerComposer: View {
                 }
             }
             .padding(.leading, 16).padding(.trailing, 20).frame(height: 64)
-            .glassEffect(.regular.tint(tint.opacity(0.12)), in: .rect(cornerRadius: 16))
-            .glassEffectID("bar", in: glass)
-            Button {
-                withAnimation(Motion.standard) { store.stop() }
-            } label: {
+            .glass(.selection, tint: tint, radius: Self.radius, id: "bar", in: glass)
+            Button(action: store.stop) {
                 Image(systemName: "stop.fill").font(.system(size: 16, weight: .semibold))
                     .frame(width: 64, height: 64)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white)
-            .glassEffect(.regular.tint(tint).interactive(), in: .circle)
-            .glassEffectID("action", in: glass)
+            .glass(.accent, tint: tint, radius: 32, id: "action", in: glass)
             .help("Arrêter (⌘↩)")
             .accessibilityLabel("Arrêter le timer")
         }
     }
 
-    private func start() {
-        withAnimation(Motion.standard) { store.toggleTimer() }
-    }
+    private func start() { store.toggleTimer() }
 }
 
 /// Project selector for the next timer, used by the composer and the menu bar.
@@ -226,7 +221,8 @@ struct MenuBarView: View {
             .tint(tint)
             .disabled(store.running == nil && store.nextTimerProject == nil)
         }
-        .card(padding: 14)
+        .padding(14)
+        .liveLens(store.running == nil ? nil : tint, radius: Theme.cardRadius, restingCard: true)
     }
 }
 
@@ -239,6 +235,7 @@ struct CommandPalette: View {
     @State private var selection = 0
     /// Weekly totals shown next to projects; computed once per opening, not per keystroke.
     @State private var weekSeconds: [UUID: TimeInterval] = [:]
+    private static let radius: CGFloat = 16
 
     var body: some View {
         let items = store.paletteCommands(matching: store.launcherQuery, weekSeconds: weekSeconds)
@@ -310,7 +307,11 @@ struct CommandPalette: View {
                 .padding(.horizontal, 12).frame(height: 36)
             }
             .frame(width: 600)
-            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            // Clip the results, not the glass, so the glass keeps sampling what lies under the panel.
+            .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+            .glass(.panel, radius: Self.radius)
+            .lightRing(Theme.accent, radius: Self.radius)
+            .panelShadow()
             .padding(.top, 64)
         }
         .onAppear {
@@ -335,10 +336,12 @@ struct CommandPalette: View {
             }
         }
         .padding(.horizontal, 10).frame(height: 36)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.rowRadius, style: .continuous)
-                .fill(Color.primary.opacity(selected ? 0.08 : 0))
-        )
+        .background {
+            if selected {
+                Color.clear.glass(
+                    .selection, tint: item.section == .start ? item.tint : nil, radius: Theme.rowRadius)
+            }
+        }
         .contentShape(Rectangle())
     }
 
