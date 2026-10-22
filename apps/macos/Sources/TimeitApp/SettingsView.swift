@@ -35,7 +35,7 @@ struct SettingsView: View {
                 HStack {
                     if saved { Label("Réglages enregistrés", systemImage: "checkmark").foregroundStyle(.secondary) }
                     Spacer()
-                    Button("Enregistrer", action: save).buttonStyle(.glassProminent)
+                    Button("Enregistrer", action: save).keyboardShortcut(.defaultAction)
                 }
             }.formStyle(.grouped).tabItem { Label("Compte", systemImage: "person.crop.circle") }
             Form {

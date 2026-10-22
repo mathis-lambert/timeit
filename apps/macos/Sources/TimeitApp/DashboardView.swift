@@ -8,10 +8,6 @@ struct DashboardView: View {
         let entries = store.visibleEntries
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                PageHeader(title: store.periodTitle, subtitle: store.periodSubtitle) {
-                    FilterChip(store: store)
-                    PeriodControls(store: store)
-                }
                 TimerComposer(store: store)
                 // Totals only move while a timer runs.
                 TimelineView(.periodic(from: .now, by: store.running == nil ? 3600 : 30)) { context in
@@ -29,10 +25,11 @@ struct DashboardView: View {
                 }
                 SessionsCard(store: store, entries: entries)
             }
-            .padding(.horizontal, Theme.gutter).padding(.top, 12).padding(.bottom, 64)
+            .padding(Theme.gutter)
             .frame(maxWidth: 1160)
             .frame(maxWidth: .infinity)
         }
+        .toolbar { PeriodToolbar(store: store) }
     }
 }
 
@@ -47,17 +44,8 @@ private struct MetricsRow: View {
         MetricStrip {
             Metric(
                 label: "Temps travaillé", value: Display.duration(summary.seconds),
-                detail: "\(Display.duration(summary.billableSeconds)) facturables"
-            ) {
-                let percent = Int((summary.seconds / goalSeconds * 100).rounded())
-                VStack(spacing: 4) {
-                    ProgressRing(value: summary.seconds / goalSeconds)
-                    Text("\(percent) %").font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.secondary)
-                }
-                .help("\(percent) % de l’objectif de \(store.workspace.profile.weeklyGoal) h par semaine")
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(percent) % de l’objectif")
-            }
+                detail: "\(Display.duration(summary.billableSeconds)) facturables",
+                progress: summary.seconds / goalSeconds)
             Metric(
                 label: "Honoraires bruts", value: Display.money(summary.gross, currency: currency),
                 detail: summary.unconvertedEntries.isEmpty
@@ -88,38 +76,34 @@ struct MetricStrip<Content: View>: View {
     }
 }
 
-struct Metric<Accessory: View>: View {
+struct Metric: View {
     let label: String
     let value: String
     let detail: String
     var warning = false
     var tint: Color = .primary
-    @ViewBuilder var accessory: Accessory
+    /// Share of the goal reached, shown as a thin bar under the value.
+    var progress: Double? = nil
     var body: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(label).eyebrow()
-                Text(value)
-                    .font(.system(size: 28, weight: .medium, design: .rounded)).monospacedDigit()
-                    .foregroundStyle(tint)
-                    .lineLimit(1).minimumScaleFactor(0.6)
-                HStack(spacing: 4) {
-                    if warning { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
-                    Text(detail)
-                }
-                .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).fieldLabel()
+            Text(value)
+                .font(.system(.largeTitle, weight: .medium)).monospacedDigit()
+                .foregroundStyle(tint)
+                .lineLimit(1).minimumScaleFactor(0.6)
+            if let progress {
+                ProgressView(value: min(1, max(0, progress)))
+                    .controlSize(.small)
+                    .help("\(Int((progress * 100).rounded())) % de l’objectif")
             }
-            Spacer(minLength: 0)
-            accessory
+            HStack(spacing: 4) {
+                if warning { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                Text(detail)
+            }
+            .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-    }
-}
-
-extension Metric where Accessory == EmptyView {
-    init(label: String, value: String, detail: String, warning: Bool = false, tint: Color = .primary) {
-        self.init(label: label, value: value, detail: detail, warning: warning, tint: tint) { EmptyView() }
     }
 }
 
@@ -163,7 +147,7 @@ private struct Breakdown: View {
                             Text("\(Int((slice.seconds / max(1, summary.seconds) * 100).rounded())) %")
                                 .monospacedDigit().foregroundStyle(.secondary)
                         }
-                        .font(.system(size: 11))
+                        .font(.callout)
                     }
                 }
             }
@@ -177,10 +161,10 @@ private struct Breakdown: View {
                     Text(Display.money(summary.contributions + summary.incomeTax, currency: currency))
                         .fontWeight(.semibold).monospacedDigit()
                 }
-                .font(.system(size: 12.5))
+                .font(.body)
             }
             Text("Selon les taux de votre compte, figés avec chaque session.")
-                .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                .font(.footnote).foregroundStyle(.secondary)
         }
     }
     private func row(_ label: String, _ value: String) -> some View {
@@ -189,7 +173,7 @@ private struct Breakdown: View {
             Spacer()
             Text(value).monospacedDigit()
         }
-        .font(.system(size: 12))
+        .font(.callout)
     }
 }
 
@@ -237,7 +221,7 @@ struct WeeklyActivity: View {
                     ?? "Moyenne \(Display.duration(average * 3600)) par jour travaillé"
             ) {
                 Text(Display.duration((selectedTotal ?? totals.values.reduce(0, +)) * 3600))
-                    .font(.system(size: 17, weight: .medium, design: .rounded)).monospacedDigit()
+                    .font(.title3.weight(.medium)).monospacedDigit()
             }
             Chart {
                 ForEach(points) { point in
@@ -272,7 +256,7 @@ struct WeeklyActivity: View {
                                 date.formatted(
                                     store.period == .week ? .dateTime.weekday(.abbreviated) : .dateTime.day())
                             )
-                            .font(.system(size: 10.5, weight: today ? .semibold : .regular))
+                            .font(.caption.weight(today ? .semibold : .regular))
                             .foregroundStyle(today ? Theme.accent : .secondary)
                         }
                     }
@@ -283,7 +267,7 @@ struct WeeklyActivity: View {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Theme.divider)
                     AxisValueLabel {
                         if let hours = value.as(Double.self) {
-                            Text("\(Int(hours)) h").font(.system(size: 9.5)).foregroundStyle(.secondary)
+                            Text("\(Int(hours)) h").font(.caption2).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -303,11 +287,8 @@ private struct SessionsCard: View {
         let shown = Dictionary(grouping: entries.prefix(14)) { store.calendar.startOfDay(for: $0.start) }
             .sorted { $0.key > $1.key }
         VStack(alignment: .leading, spacing: 6) {
-            CardHeader(title: "Dernières sessions", subtitle: "\(entries.count) sur la période") {
-                Button("Voir le calendrier") { store.screen = .calendar }
-                    .buttonStyle(.link).font(.system(size: 12))
-            }
-            .padding(.horizontal, 6).padding(.bottom, 4)
+            CardHeader(title: "Dernières sessions", subtitle: "\(entries.count) sur la période")
+                .padding(.horizontal, 6).padding(.bottom, 4)
             if entries.isEmpty {
                 EmptyState(
                     symbol: "clock", title: "Rien sur cette période",
@@ -317,10 +298,10 @@ private struct SessionsCard: View {
             } else {
                 ForEach(shown, id: \.key) { day, dayEntries in
                     HStack {
-                        Text(dayLabel(day)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.secondary)
+                        Text(dayLabel(day)).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                         Spacer()
                         Text(Display.duration((byDay[day] ?? dayEntries).reduce(0) { $0 + $1.duration() }))
-                            .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                            .font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 8).padding(.top, 10).padding(.bottom, 2)
                     ForEach(dayEntries) { entry in EntryRow(store: store, entry: entry) }
@@ -346,20 +327,20 @@ struct EntryRow: View {
         HStack(spacing: 12) {
             ProjectMark(color: project?.color ?? .coral)
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.displayTitle).font(.system(size: 13, weight: .medium))
+                Text(entry.displayTitle).font(.body)
                     .lineLimit(1)
                 HStack(spacing: 5) {
                     Text(
                         store.workspace.label(forProject: entry.projectID))
                     if !entry.billable { Text("· Non facturable") }
                 }
-                .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+                .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 10)
             Text(
                 Display.timeRange(entry, calendar: store.calendar)
             )
-            .font(.system(size: 11.5)).foregroundStyle(.secondary).monospacedDigit()
+            .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
             Group {
                 if entry.end == nil {
                     TimelineView(.periodic(from: entry.start, by: 60)) { context in
@@ -369,23 +350,29 @@ struct EntryRow: View {
                     Text(Display.duration(entry.duration()))
                 }
             }
-            .font(.system(size: 13, weight: .medium)).monospacedDigit().frame(width: 60, alignment: .trailing)
+            .font(.body).monospacedDigit().frame(width: 60, alignment: .trailing)
             Button {
                 store.resume(entry)
             } label: {
-                Image(systemName: "play.fill").font(.system(size: 10))
+                Image(systemName: "play.circle")
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(Theme.accent)
+            .foregroundStyle(.secondary)
             .frame(width: 22)
             .opacity(hovered ? 1 : 0)
             .help("Reprendre cette activité")
             .accessibilityLabel("Reprendre \(entry.title)")
             .disabled(!resumable)
         }
-        .padding(.vertical, 8).padding(.horizontal, 8)
-        .hoverHighlight()
-        .liveLens(entry.end == nil ? project?.color.tint ?? Theme.accent : nil, radius: Theme.rowRadius)
+        .padding(.vertical, 7).padding(.horizontal, 8)
+        .background {
+            // The running session reads as selected, the way a list marks its current item.
+            if entry.end == nil {
+                RoundedRectangle(cornerRadius: Theme.rowRadius, style: .continuous)
+                    .fill((project?.color.tint ?? Theme.accent).opacity(0.12))
+            }
+        }
+        .contentShape(Rectangle())
         .onHover { hovered = $0 }
         .onTapGesture(count: 2) { store.entryEditor = EntryEditorRequest(entry: entry) }
         .contextMenu {

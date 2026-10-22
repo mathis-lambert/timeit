@@ -13,6 +13,7 @@
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAccentColorName</key><string>AccentColor</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>CFBundleURLTypes</key>
   <array><dict><key>CFBundleURLName</key><string>OAuth callback</string><key>CFBundleURLSchemes</key><array><string>fr.mathislambert.timeit</string></array></dict></array>

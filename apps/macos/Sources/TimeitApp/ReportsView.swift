@@ -6,91 +6,108 @@ import UniformTypeIdentifiers
 
 struct ReportsView: View {
     @Bindable var store: AppStore
+
+    private struct Row: Identifiable {
+        let project: Project
+        let client: String
+        let summary: FinancialSummary
+        var id: UUID { project.id }
+    }
+
     var body: some View {
         let entries = store.visibleEntries
         let summary = store.summary(entries: entries)
         let currency = store.workspace.profile.currency
         let rows = Dictionary(grouping: entries, by: \.projectID)
-            .compactMap { id, entries in store.workspace.project(id).map { ($0, store.summary(entries: entries)) } }
-            .sorted { $0.1.seconds > $1.1.seconds }
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                PageHeader(title: "Rapports", subtitle: store.periodSubtitle) {
-                    FilterChip(store: store)
-                    PeriodControls(store: store)
-                }
-                MetricStrip {
-                    Metric(
-                        label: "Temps travaillé", value: Display.duration(summary.seconds),
-                        detail: "\(entries.count) sessions")
-                    Metric(
-                        label: "Honoraires HT", value: Display.money(summary.gross, currency: currency),
-                        detail: summary.unconvertedEntries.isEmpty
-                            ? "Convertis en \(currency)" : "Total partiel · conversions en attente",
-                        warning: !summary.unconvertedEntries.isEmpty)
-                    Metric(
-                        label: "Net estimé", value: Display.money(summary.net, currency: currency),
-                        detail: "Après prélèvements", tint: Theme.positive)
-                }
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("Client / projet").frame(maxWidth: .infinity, alignment: .leading)
-                        Text("Temps").frame(width: 150, alignment: .trailing)
-                        Text("Brut HT").frame(width: 120, alignment: .trailing)
-                        Text("Net estimé").frame(width: 120, alignment: .trailing)
-                    }
-                    .eyebrow().padding(.horizontal, 10).padding(.bottom, 8)
-                    if rows.isEmpty {
-                        EmptyState(
-                            symbol: "chart.bar.xaxis", title: "Rien à rapporter",
-                            detail: "Aucune session sur cette période."
-                        ).frame(height: 220)
-                    }
-                    ForEach(rows, id: \.0.id) { project, total in
-                        Divider()
-                        HStack(spacing: 12) {
-                            HStack(spacing: 10) {
-                                ProjectMark(color: project.color)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(project.name).font(.system(size: 13, weight: .medium))
-                                    Text(store.workspace.client(for: project)?.name ?? "").font(.system(size: 11.5))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            HStack(spacing: 10) {
-                                ShareBar(value: total.seconds / max(1, summary.seconds), tint: project.color.tint)
-                                Text(Display.duration(total.seconds)).frame(width: 60, alignment: .trailing)
-                            }
-                            .frame(width: 150, alignment: .trailing)
-                            Text(
-                                total.unconvertedEntries.isEmpty
-                                    ? Display.money(total.gross, currency: currency) : "En attente"
-                            ).frame(width: 120, alignment: .trailing)
-                            Text(
-                                total.unconvertedEntries.isEmpty
-                                    ? Display.money(total.net, currency: currency) : "En attente"
-                            ).foregroundStyle(Theme.positive).frame(width: 120, alignment: .trailing)
-                        }
-                        .font(.system(size: 13)).monospacedDigit()
-                        .padding(.horizontal, 10).padding(.vertical, 10)
-                    }
-                }
-                .card(padding: 10)
-                HStack(spacing: 10) {
-                    Label(
-                        "Montants du travail effectué sur la période, pas des paiements reçus. Tarifs et prélèvements sont figés dans chaque session.",
-                        systemImage: "info.circle"
-                    )
-                    .font(.system(size: 11.5)).foregroundStyle(.secondary)
-                    Spacer(minLength: 16)
-                    Button("Exporter CSV", systemImage: "tablecells") { exportCSV() }.buttonStyle(.glass)
-                    Button("Relevé PDF", systemImage: "doc.richtext") { exportPDF() }.buttonStyle(.glassProminent)
+            .compactMap { id, entries in
+                store.workspace.project(id).map {
+                    Row(
+                        project: $0, client: store.workspace.client(for: $0)?.name ?? "",
+                        summary: store.summary(entries: entries))
                 }
             }
-            .padding(.horizontal, Theme.gutter).padding(.top, 12).padding(.bottom, 64)
-            .frame(maxWidth: 1160).frame(maxWidth: .infinity)
+            .sorted { $0.summary.seconds > $1.summary.seconds }
+        VStack(spacing: 0) {
+            MetricStrip {
+                Metric(
+                    label: "Temps travaillé", value: Display.duration(summary.seconds),
+                    detail: "\(entries.count) sessions")
+                Metric(
+                    label: "Honoraires HT", value: Display.money(summary.gross, currency: currency),
+                    detail: summary.unconvertedEntries.isEmpty
+                        ? "Convertis en \(currency)" : "Total partiel · conversions en attente",
+                    warning: !summary.unconvertedEntries.isEmpty)
+                Metric(
+                    label: "Net estimé", value: Display.money(summary.net, currency: currency),
+                    detail: "Après prélèvements", tint: Theme.positive)
+            }
+            .padding(Theme.gutter)
+            Table(rows) {
+                TableColumn("Projet") { row in
+                    Label {
+                        Text(row.project.name)
+                    } icon: {
+                        Image(systemName: "circle.fill").foregroundStyle(row.project.color.tint).imageScale(.small)
+                    }
+                }
+                TableColumn("Client") { row in Text(row.client).foregroundStyle(.secondary) }
+                TableColumn("Temps") { row in
+                    Text(Display.duration(row.summary.seconds)).monospacedDigit()
+
+                }
+                .width(min: 70, ideal: 90)
+                .alignment(.trailing)
+                TableColumn("Part") { row in
+                    Text(row.summary.seconds / max(1, summary.seconds), format: .percent.precision(.fractionLength(0)))
+                        .monospacedDigit().foregroundStyle(.secondary)
+
+                }
+                .width(min: 50, ideal: 60)
+                .alignment(.trailing)
+                TableColumn("Brut HT") { row in
+                    amount(row.summary.unconvertedEntries.isEmpty ? row.summary.gross : nil, currency: currency)
+                }
+                .width(min: 90, ideal: 110)
+                .alignment(.trailing)
+                TableColumn("Net estimé") { row in
+                    amount(row.summary.unconvertedEntries.isEmpty ? row.summary.net : nil, currency: currency)
+                }
+                .width(min: 90, ideal: 110)
+                .alignment(.trailing)
+            }
+            .overlay {
+                if rows.isEmpty {
+                    EmptyState(
+                        symbol: "chart.bar.xaxis", title: "Rien à rapporter",
+                        detail: "Aucune session sur cette période.")
+                }
+            }
+            Text(
+                "Montants du travail effectué sur la période, pas des paiements reçus. Tarifs et prélèvements sont figés dans chaque session."
+            )
+            .font(.footnote).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.gutter).padding(.vertical, 10)
         }
+        .toolbar {
+            PeriodToolbar(store: store)
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button("Relevé PDF…", action: exportPDF)
+                    Button("Tableur CSV…", action: exportCSV)
+                } label: {
+                    Label("Exporter", systemImage: "square.and.arrow.up")
+                }
+                .help("Exporter la période")
+                .disabled(rows.isEmpty)
+            }
+        }
+    }
+
+    private func amount(_ value: Decimal?, currency: String) -> some View {
+        Text(value.map { Display.money($0, currency: currency) } ?? "En attente")
+            .monospacedDigit()
+            .foregroundStyle(value == nil ? .secondary : .primary)
     }
     private func destination(type: UTType, name: String) -> URL? {
         let panel = NSSavePanel()
@@ -134,18 +151,6 @@ struct ReportsView: View {
         let entries = store.visibleEntries.filter(\.billable).sorted { $0.start < $1.start }
         let report = ReportPrintView(workspace: store.workspace, entries: entries, interval: store.interval)
         if !report.write(to: url) { store.errorMessage = "Le relevé PDF n’a pas pu être créé." }
-    }
-}
-
-private struct ShareBar: View {
-    let value: Double
-    let tint: Color
-    var body: some View {
-        Capsule().fill(Color.primary.opacity(0.07)).frame(width: 64, height: 4)
-            .overlay(alignment: .leading) {
-                Capsule().fill(tint).frame(width: 64 * min(1, max(0, value)), height: 4)
-            }
-            .accessibilityHidden(true)
     }
 }
 

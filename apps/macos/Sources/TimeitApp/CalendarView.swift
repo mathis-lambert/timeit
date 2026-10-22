@@ -23,73 +23,48 @@ struct CalendarView: View {
         let week = store.calendarWeek
         // One pass over the filtered history; each column then only sees its own week.
         let weekEntries = store.filteredEntries.filter { $0.start < week.end && ($0.end ?? .now) > week.start }
-        VStack(spacing: 14) {
-            PageHeader(title: store.periodTitle, subtitle: store.periodSubtitle) {
-                FilterChip(store: store)
-                PeriodControls(store: store, showPicker: false)
+        // Full bleed, like Calendar: the grid is the content.
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                Color.clear.frame(width: 58)
+                ForEach(days, id: \.start) { day in dayHeader(day, entries: weekEntries) }
             }
-            .padding(.horizontal, Theme.gutter).padding(.top, 12)
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    Color.clear.frame(width: 58)
-                    ForEach(days, id: \.start) { day in dayHeader(day, entries: weekEntries) }
-                }
-                .padding(.trailing, 12).padding(.vertical, 12)
-                .fixedSize(horizontal: false, vertical: true)
-                Divider()
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical) {
-                        // Only the current week has a moving "now" line.
-                        TimelineView(.periodic(from: .now, by: week.contains(.now) ? 60 : 3600)) { context in
-                            HStack(alignment: .top, spacing: 0) {
-                                VStack(spacing: 0) {
-                                    ForEach(0..<24, id: \.self) { hour in
-                                        Text(String(format: "%02d:00", hour))
-                                            .font(.system(size: 10)).monospacedDigit()
-                                            .foregroundStyle(.secondary)
-                                            .frame(width: 50, height: hourHeight, alignment: .topTrailing)
-                                            .padding(.trailing, 8).offset(y: -6)
-                                            .id("hour-\(hour)")
-                                    }
-                                }
-                                ForEach(days, id: \.start) { day in
-                                    DayColumn(
-                                        store: store, day: day.start, nextDay: day.end, hourHeight: hourHeight,
-                                        now: context.date,
-                                        entries: weekEntries.filter {
-                                            $0.start < day.end && ($0.end ?? context.date) > day.start
-                                        },
-                                        drag: $drag
-                                    )
+            .padding(.trailing, 12).padding(.vertical, 12)
+            .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    // Only the current week has a moving "now" line.
+                    TimelineView(.periodic(from: .now, by: week.contains(.now) ? 60 : 3600)) { context in
+                        HStack(alignment: .top, spacing: 0) {
+                            VStack(spacing: 0) {
+                                ForEach(0..<24, id: \.self) { hour in
+                                    Text(String(format: "%02d:00", hour))
+                                        .font(.caption2).monospacedDigit()
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 50, height: hourHeight, alignment: .topTrailing)
+                                        .padding(.trailing, 8).offset(y: -6)
+                                        .id("hour-\(hour)")
                                 }
                             }
-                            .padding(.top, 10).padding(.trailing, 12)
+                            ForEach(days, id: \.start) { day in
+                                DayColumn(
+                                    store: store, day: day.start, nextDay: day.end, hourHeight: hourHeight,
+                                    now: context.date,
+                                    entries: weekEntries.filter {
+                                        $0.start < day.end && ($0.end ?? context.date) > day.start
+                                    },
+                                    drag: $drag
+                                )
+                            }
                         }
+                        .padding(.top, 10).padding(.trailing, 12)
                     }
-                    .onAppear { proxy.scrollTo("hour-8", anchor: .top) }
                 }
-                Divider()
-                HStack(spacing: 16) {
-                    hint("cursorarrow.click.2", "Double-clic pour ajouter")
-                    hint("hand.draw", "Glisser pour déplacer")
-                    hint("arrow.up.and.down", "Bord inférieur pour ajuster")
-                    Spacer()
-                    Text(store.calendar.timeZone.identifier)
-                }
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-                .padding(.horizontal, 18).padding(.vertical, 10)
+                .onAppear { proxy.scrollTo("hour-8", anchor: .top) }
             }
-            .card(padding: 0)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
-            .padding(.horizontal, Theme.gutter)
-            .padding(.bottom, store.isDemo ? 64 : 18)
         }
-    }
-    private func hint(_ symbol: String, _ text: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol)
-            Text(text)
-        }
+        .toolbar { PeriodToolbar(store: store, showsPeriod: false) }
     }
     private func dayHeader(_ interval: DateInterval, entries: [TimeEntry]) -> some View {
         let day = interval.start
@@ -98,16 +73,16 @@ struct CalendarView: View {
         return VStack(spacing: 4) {
             HStack(spacing: 6) {
                 Text(day.formatted(.dateTime.weekday(.abbreviated)))
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.callout)
                     .foregroundStyle(today ? Theme.accent : .secondary)
                 Text(day.formatted(.dateTime.day()))
-                    .font(.system(size: 14, weight: .semibold)).monospacedDigit()
+                    .font(.title3.weight(.semibold)).monospacedDigit()
                     .foregroundStyle(today ? .white : .primary)
                     .frame(minWidth: 24, minHeight: 24)
                     .background { if today { Circle().fill(Theme.accent) } }
             }
             Text(seconds > 0 ? Display.duration(seconds) : " ")
-                .font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.secondary)
+                .font(.caption).monospacedDigit().foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -195,7 +170,7 @@ private struct DropPreview: View {
     var body: some View {
         let tint = store.workspace.project(entry.projectID)?.color.tint ?? Theme.accent
         Text(Display.timeRange(entry, calendar: store.calendar))
-            .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+            .font(.caption.weight(.semibold)).monospacedDigit()
             .padding(.horizontal, 7).padding(.vertical, 5)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -221,14 +196,14 @@ private struct CalendarEntry: View {
         GeometryReader { geometry in
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.title.isEmpty ? project?.name ?? "Session" : entry.title)
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .lineLimit(geometry.size.height > 70 ? 3 : 1)
                 if geometry.size.height > 46 {
-                    Text(project?.name ?? "").font(.system(size: 10.5)).lineLimit(1).foregroundStyle(.secondary)
+                    Text(project?.name ?? "").font(.caption).lineLimit(1).foregroundStyle(.secondary)
                 }
                 if geometry.size.height > 72 {
                     Text(entry.end == nil ? "En cours" : Display.duration(entry.duration(at: now)))
-                        .font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.secondary)
+                        .font(.caption).monospacedDigit().foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }

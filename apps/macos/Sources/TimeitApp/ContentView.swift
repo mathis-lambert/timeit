@@ -5,7 +5,7 @@ struct ContentView: View {
     @Bindable var store: AppStore
     var body: some View {
         NavigationSplitView {
-            Sidebar(store: store).navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
+            Sidebar(store: store).navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } detail: {
             ZStack(alignment: .top) {
                 if let error = store.startupError {
@@ -17,7 +17,6 @@ struct ContentView: View {
                 } else {
                     screen
                 }
-                if store.isDemo { demoBadge }
                 if store.showLauncher {
                     CommandPalette(store: store)
                         .transition(.opacity)
@@ -25,33 +24,10 @@ struct ContentView: View {
                 }
             }
             .animation(Motion.quick, value: store.showLauncher)
-            .frame(minWidth: 760, minHeight: 640)
-            .toolbar(removing: .title)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        store.showLauncher = true
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                            Text("Rechercher, démarrer…").foregroundStyle(.secondary)
-                            Spacer(minLength: 16)
-                            KeyCap("⌘K")
-                        }
-                        .font(.system(size: 12.5)).padding(.horizontal, 4).frame(width: 250)
-                    }
-                    .help("Palette de commandes (⌘K)")
-                    .accessibilityLabel("Ouvrir la palette de commandes")
-                }
-                ToolbarSpacer(.fixed, placement: .primaryAction)
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        store.entryEditor = EntryEditorRequest()
-                    } label: {
-                        Label("Ajouter une session", systemImage: "plus")
-                    }.help("Ajouter une session (⌘N)").disabled(store.workspace.projects.isEmpty)
-                }
-            }
+            .frame(minWidth: 720, minHeight: 600)
+            .navigationTitle(store.screen?.title ?? "Timeit")
+            .navigationSubtitle(store.windowSubtitle)
+            .toolbar { WindowToolbar(store: store) }
         }
         .sheet(item: $store.entryEditor) { request in EntryEditor(store: store, request: request) }
         .sheet(item: $store.projectEditor) { request in ProjectEditor(store: store, request: request) }
@@ -74,22 +50,114 @@ struct ContentView: View {
         case .reports: ReportsView(store: store)
         }
     }
+}
 
-    private var demoBadge: some View {
-        VStack {
-            Spacer()
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles").foregroundStyle(Theme.accent)
-                Text("Espace d’exemple").fontWeight(.semibold)
-                Text("Données fictives, effacées en quittant.").foregroundStyle(.secondary)
-                Button("Revenir à mon espace") { store.leaveDemo() }
-                    .buttonStyle(.plain).foregroundStyle(Theme.accent).fontWeight(.medium)
+// MARK: - Toolbar
+
+/// Items present on every screen: the running timer, the example workspace, the project filter, search and add.
+private struct WindowToolbar: ToolbarContent {
+    @Bindable var store: AppStore
+    var body: some ToolbarContent {
+        if let entry = store.running {
+            ToolbarItem(placement: .primaryAction) { RunningTimerItem(store: store, entry: entry) }
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+        }
+        if let id = store.projectFilter, let project = store.workspace.project(id) {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    store.projectFilter = nil
+                } label: {
+                    Label(project.name, systemImage: "line.3.horizontal.decrease.circle.fill")
+                        .labelStyle(.titleAndIcon)
+                }
+                .help("Retirer le filtre")
             }
-            .font(.system(size: 11.5))
-            .padding(.horizontal, 16).padding(.vertical, 9)
-            .glass(.panel, radius: 17)
-            .floatShadow()
-            .padding(.bottom, 18)
+        }
+        if store.isDemo {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Quitter l’exemple") { store.leaveDemo() }
+                    .help("Revenir à votre espace. Les données d’exemple sont effacées.")
+            }
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                store.showLauncher = true
+            } label: {
+                Label("Palette de commandes", systemImage: "magnifyingglass")
+            }
+            .help("Palette de commandes (⌘K)")
+            Button {
+                store.entryEditor = EntryEditorRequest()
+            } label: {
+                Label("Ajouter une session", systemImage: "plus")
+            }
+            .help("Ajouter une session (⌘N)")
+            .disabled(store.workspace.projects.isEmpty)
+        }
+    }
+}
+
+/// The running timer, on every screen: project, elapsed time and Stop.
+private struct RunningTimerItem: View {
+    let store: AppStore
+    let entry: TimeEntry
+    var body: some View {
+        let project = store.workspace.project(entry.projectID)
+        HStack(spacing: 8) {
+            Button {
+                store.screen = .overview
+            } label: {
+                HStack(spacing: 6) {
+                    ProjectMark(color: project?.color ?? .coral)
+                    Text(project?.name ?? "Timer").lineLimit(1)
+                    TimelineView(.periodic(from: entry.start, by: 1)) { context in
+                        Text(Display.duration(entry.duration(at: context.date), seconds: true))
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.leading, 4)
+            }
+            .buttonStyle(.plain)
+            .help(entry.displayTitle)
+            Button(action: store.stop) {
+                Label("Arrêter", systemImage: "stop.fill")
+            }
+            .labelStyle(.iconOnly)
+            .help("Arrêter le timer (⌘↩)")
+        }
+    }
+}
+
+/// Period navigation in the toolbar, like Calendar: a week/month switch and previous, today, next.
+struct PeriodToolbar: ToolbarContent {
+    @Bindable var store: AppStore
+    var showsPeriod = true
+    var body: some ToolbarContent {
+        if showsPeriod {
+            ToolbarItem(placement: .navigation) {
+                Picker("Période", selection: $store.period) {
+                    Text("Semaine").tag(ReportPeriod.week)
+                    Text("Mois").tag(ReportPeriod.month)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+            }
+        }
+        ToolbarItem(placement: .navigation) {
+            ControlGroup {
+                Button {
+                    store.navigate(-1)
+                } label: {
+                    Label("Précédent", systemImage: "chevron.left")
+                }
+                Button("Aujourd’hui") { store.anchorDate = .now }
+                Button {
+                    store.navigate(1)
+                } label: {
+                    Label("Suivant", systemImage: "chevron.right")
+                }
+            }
+            .fixedSize()
         }
     }
 }
@@ -98,120 +166,59 @@ struct ContentView: View {
 
 private struct Sidebar: View {
     @Bindable var store: AppStore
-    @Environment(\.openSettings) private var openSettings
     var body: some View {
         let weekSeconds = store.weekSecondsByProject
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                BrandMark(size: 22, progress: store.goalProgress(weekSeconds))
-                Wordmark(size: 21)
-                Spacer()
-            }
-            .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 14)
-            .help("L’anneau se remplit avec votre objectif hebdomadaire")
-            List(selection: $store.screen) {
-                Section {
-                    ForEach(Screen.allCases) { screen in
-                        Label(screen.title, systemImage: screen.symbol).tag(screen)
-                    }
+        List(selection: $store.screen) {
+            Section {
+                ForEach(Screen.allCases) { screen in
+                    Label(screen.title, systemImage: screen.symbol).tag(screen)
                 }
-                Section("Projets") {
-                    ForEach(store.workspace.activeProjects.prefix(8)) { project in
-                        let filtered = store.projectFilter == project.id
-                        Button {
-                            store.projectFilter = filtered ? nil : project.id
-                            if store.screen != .calendar { store.screen = .overview }
-                        } label: {
-                            HStack(spacing: 10) {
-                                ProjectMark(color: project.color, size: 8).frame(width: 16)
-                                Text(project.name).lineLimit(1)
-                                Spacer(minLength: 4)
-                                if filtered {
-                                    Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                                        .foregroundStyle(project.color.tint)
-                                } else if store.running?.projectID == project.id {
-                                    Image(systemName: "record.circle").foregroundStyle(project.color.tint)
-                                        .accessibilityLabel("En cours")
-                                } else {
-                                    if let seconds = weekSeconds[project.id], seconds > 0 {
-                                        Text(Display.duration(seconds)).font(.system(size: 10.5)).monospacedDigit()
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                            }.contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help(filtered ? "Retirer le filtre" : "Filtrer sur \(project.name)")
-                    }
+            }
+            Section("Projets") {
+                ForEach(store.workspace.activeProjects) { project in
+                    let filtered = store.projectFilter == project.id
                     Button {
-                        store.projectEditor = ProjectEditorRequest()
+                        store.projectFilter = filtered ? nil : project.id
+                        if store.screen != .calendar { store.screen = .overview }
                     } label: {
-                        Label("Nouveau projet", systemImage: "plus").foregroundStyle(.secondary)
-                    }.buttonStyle(.plain)
-                }
-            }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            footer
-        }
-    }
-
-    private var footer: some View {
-        VStack(spacing: 10) {
-            if let entry = store.running {
-                let project = store.workspace.project(entry.projectID)
-                let tint = project?.color.tint ?? Theme.accent
-                Button {
-                    store.screen = .overview
-                } label: {
-                    HStack(spacing: 8) {
-                        LiveDot(color: tint, size: 6)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(entry.displayTitle).font(
-                                .system(size: 11.5, weight: .semibold)
-                            ).lineLimit(1)
-                            Text(project?.name ?? "").font(.system(size: 10))
-                                .foregroundStyle(.secondary).lineLimit(1)
+                        HStack {
+                            Label {
+                                Text(project.name).lineLimit(1)
+                            } icon: {
+                                Image(systemName: filtered ? "circle.inset.filled" : "circle.fill")
+                                    .foregroundStyle(project.color.tint)
+                                    .imageScale(.small)
+                            }
+                            Spacer(minLength: 4)
+                            if store.running?.projectID == project.id {
+                                Image(systemName: "record.circle").foregroundStyle(.secondary)
+                                    .accessibilityLabel("En cours")
+                            } else if let seconds = weekSeconds[project.id], seconds > 0 {
+                                Text(Display.duration(seconds)).monospacedDigit().foregroundStyle(.secondary)
+                            }
                         }
-                        Spacer(minLength: 4)
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            Text(Display.duration(entry.duration(at: context.date), seconds: true))
-                                .font(.system(size: 12, weight: .semibold, design: .rounded)).monospacedDigit()
-                        }
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .liveLens(tint, radius: 10)
+                    .buttonStyle(.plain)
+                    .help(filtered ? "Retirer le filtre" : "Afficher uniquement \(project.name)")
+                    .contextMenu {
+                        Button("Modifier…") { store.projectEditor = ProjectEditorRequest(project: project) }
+                        Button("Démarrer") { store.start(project: project) }
+                    }
                 }
-                .buttonStyle(.plain)
             }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
             HStack(spacing: 6) {
                 Image(systemName: store.isDemo ? "sparkles" : store.connected ? "checkmark.icloud" : "internaldrive")
                 Text(store.syncLabel).lineLimit(1)
                 Spacer(minLength: 0)
                 if store.isSyncing { ProgressView().controlSize(.mini) }
             }
-            .font(.system(size: 10.5)).foregroundStyle(.tertiary).padding(.horizontal, 6)
-            Button {
-                openSettings()
-            } label: {
-                HStack(spacing: 10) {
-                    Text(String(store.workspace.profile.name.prefix(1)).uppercased())
-                        .font(.system(size: 12, weight: .bold, design: .rounded)).foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(Theme.accent, in: Circle())
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(store.workspace.profile.name).font(.system(size: 12, weight: .semibold))
-                        Text("Réglages").font(.system(size: 10.5)).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                    Image(systemName: "gearshape").foregroundStyle(.secondary)
-                }
-                .padding(6)
-                .hoverHighlight()
-            }
-            .buttonStyle(.plain).help("Ouvrir les réglages")
+            .font(.footnote).foregroundStyle(.secondary)
+            .padding(.horizontal, 16).padding(.vertical, 10)
         }
-        .padding(.horizontal, 12).padding(.bottom, 14)
     }
 }
 
@@ -220,59 +227,16 @@ private struct Sidebar: View {
 private struct WelcomeView: View {
     let store: AppStore
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            BrandMark(size: 40, progress: 0.72)
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Faites de la place\npour votre travail.")
-                    .font(.system(size: 38, weight: .bold)).tracking(-1.2)
-                Text("Vos projets, votre temps et ce qu’il rapporte.\nTout commence avec un premier projet.")
-                    .font(.system(size: 15)).foregroundStyle(.secondary).lineSpacing(4)
-            }
-            HStack(spacing: 12) {
-                Button("Créer mon premier projet") { store.projectEditor = ProjectEditorRequest() }
-                    .buttonStyle(.glassProminent)
-                Button("Explorer un exemple") { store.enterDemo() }
-                    .buttonStyle(.glass)
-            }
-            .controlSize(.large)
-            Label("Vos données restent sur ce Mac. Le cloud est facultatif.", systemImage: "lock.shield")
-                .font(.system(size: 11.5)).foregroundStyle(.secondary).padding(.top, 12)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(64)
-    }
-}
-
-// MARK: - Period controls
-
-struct PeriodControls: View {
-    @Bindable var store: AppStore
-    var showPicker = true
-    var body: some View {
-        HStack(spacing: 10) {
-            if showPicker {
-                Picker("Période", selection: $store.period) {
-                    Text("Semaine").tag(ReportPeriod.week)
-                    Text("Mois").tag(ReportPeriod.month)
-                }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
-            }
-            ControlGroup {
-                Button {
-                    store.navigate(-1)
-                } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .help("Période précédente").accessibilityLabel("Période précédente")
-                Button("Aujourd’hui") { store.anchorDate = .now }
-                Button {
-                    store.navigate(1)
-                } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .help("Période suivante").accessibilityLabel("Période suivante")
-            }
-            .fixedSize()
+        ContentUnavailableView {
+            Label("Bienvenue dans Timeit", systemImage: "clock")
+        } description: {
+            Text(
+                "Créez un projet pour lancer votre premier timer. Vos données restent sur ce Mac ; la synchronisation est facultative."
+            )
+        } actions: {
+            Button("Créer un projet") { store.projectEditor = ProjectEditorRequest() }
+                .buttonStyle(.borderedProminent)
+            Button("Explorer un exemple") { store.enterDemo() }
         }
     }
 }
@@ -284,38 +248,12 @@ extension AppStore {
         return
             "\(range.start.formatted(.dateTime.day().month(.abbreviated))) – \(end.formatted(.dateTime.day().month(.abbreviated).year()))"
     }
-    var periodTitle: String {
-        let current = calendar.isDate(
-            anchorDate, equalTo: .now, toGranularity: screen == .calendar ? .weekOfYear : period.component)
-        if screen == .calendar {
-            return current ? "Cette semaine" : "Semaine \(calendar.component(.weekOfYear, from: anchorDate))"
-        }
-        if current { return period == .week ? "Votre semaine, en clair." : "Votre mois, en clair." }
-        return period == .week
-            ? "Semaine \(calendar.component(.weekOfYear, from: anchorDate))"
-            : anchorDate.formatted(.dateTime.month(.wide).year()).capitalized
-    }
-}
-
-/// Filter chip shown under page titles while a project filter is active.
-struct FilterChip: View {
-    let store: AppStore
-    var body: some View {
-        if let id = store.projectFilter, let project = store.workspace.project(id) {
-            Button {
-                store.projectFilter = nil
-            } label: {
-                HStack(spacing: 6) {
-                    ProjectMark(color: project.color, size: 7)
-                    Text(project.name).fontWeight(.medium)
-                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
-                }
-                .font(.system(size: 11.5)).padding(.horizontal, 10).frame(height: 26)
-                .glass(.control, tint: project.color.tint, radius: 13)
-            }
-            .buttonStyle(.plain)
-            .help("Retirer le filtre")
-        }
+    /// The window subtitle: the period shown, or the workspace kind where periods do not apply.
+    var windowSubtitle: String {
+        let detail =
+            screen == .projects
+            ? "\(workspace.clients.count) clients · \(workspace.activeProjects.count) projets actifs" : periodSubtitle
+        return isDemo ? "Exemple · \(detail)" : detail
     }
 }
 
@@ -324,15 +262,16 @@ struct ConflictView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Label("Deux versions de votre espace", systemImage: "arrow.triangle.branch")
-                .font(.system(size: 20, weight: .bold))
+                .font(.title2.weight(.semibold))
             Text(
                 "Votre Mac et le serveur ont été modifiés séparément. Choisissez la version à conserver. Une copie de l’autre version sera enregistrée localement avant le remplacement."
             ).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack {
-                Button("Conserver ce Mac") { store.resolveConflict(useLocal: true) }.buttonStyle(.glass)
+                Button("Conserver ce Mac") { store.resolveConflict(useLocal: true) }
                 Spacer()
-                Button("Utiliser le serveur") { store.resolveConflict(useLocal: false) }.buttonStyle(.glassProminent)
-            }.controlSize(.large)
+                Button("Utiliser le serveur") { store.resolveConflict(useLocal: false) }
+                    .keyboardShortcut(.defaultAction)
+            }
         }.padding(28).frame(width: 480)
     }
 }

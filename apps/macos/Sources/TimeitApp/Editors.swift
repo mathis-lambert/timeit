@@ -65,24 +65,24 @@ struct EntryEditor: View {
                         "\(Display.money(.amount(request.entry?.projectID == project.id ? request.entry!.hourlyRate : project.hourlyRate), currency: project.currency)) / h",
                         systemImage: "eurosign")
                 }
-                .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+                .font(.callout).monospacedDigit().foregroundStyle(.secondary)
             }
             if let validation {
-                Label(validation, systemImage: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(.red)
+                Label(validation, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)
             }
             HStack {
                 if let entry = request.entry {
                     Button("Supprimer", systemImage: "trash", role: .destructive) {
                         store.delete(entry)
                         dismiss()
-                    }.buttonStyle(.glass).foregroundStyle(.red)
+                    }
                 }
                 Spacer()
-                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction).buttonStyle(.glass)
-                Button("Enregistrer", action: save).keyboardShortcut(.defaultAction).buttonStyle(.glassProminent)
+                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Enregistrer", action: save).keyboardShortcut(.defaultAction)
                     .disabled(projectID == nil)
-            }.controlSize(.large)
-        }.padding(28).frame(width: 520).onAppear { focused = true }
+            }
+        }.padding(20).frame(width: 460).onAppear { focused = true }
             .onChange(of: projectID) { _, id in
                 if let project = id.flatMap(store.workspace.project) { billable = project.billable }
             }
@@ -158,20 +158,20 @@ struct ProjectEditor: View {
                 } footer: {
                     Text(
                         "Un changement de tarif s’applique aux nouvelles sessions. L’historique conserve son tarif d’origine."
-                    ).font(.system(size: 11))
+                    )
                 }
             }.formStyle(.grouped).scrollDisabled(true).frame(height: clientID == nil ? 360 : 320)
             if let validation {
-                Label(validation, systemImage: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(.red)
+                Label(validation, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)
             }
             HStack {
                 Spacer()
-                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction).buttonStyle(.glass)
+                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(request.project == nil ? "Créer le projet" : "Enregistrer", action: save).keyboardShortcut(
                     .defaultAction
-                ).buttonStyle(.glassProminent)
-            }.controlSize(.large)
-        }.padding(28).frame(width: 520)
+                )
+            }
+        }.padding(20).frame(width: 460)
             .onAppear { focused = true }
     }
     private func save() {
@@ -200,8 +200,8 @@ struct SheetHeader: View {
     var subtitle: String? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.system(size: 20, weight: .bold)).tracking(-0.4)
-            if let subtitle { Text(subtitle).font(.system(size: 12.5)).foregroundStyle(.secondary) }
+            Text(title).font(.title2.weight(.semibold))
+            if let subtitle { Text(subtitle).foregroundStyle(.secondary) }
         }
     }
 }

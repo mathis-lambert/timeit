@@ -27,7 +27,7 @@ Before finishing a change: format, lint, run the tests of every package you touc
 ## Layout and ownership
 
 - `TimeitCore`: models, decimal money, finance, calendar layout, SQLite (GRDB), HTTP client. Must not import SwiftUI or AppKit.
-- `TimeitApp`: `AppStore` (main-actor, `@Observable`) owns all workspace mutations and the rules views rely on (`nextTimerProject`, `canResume`, `recentResumable`, `visibleEntries`, `trackedSeconds`). Views call store methods, read those results, and never write to `LocalDatabase` directly. `Theme.swift` holds tokens, shared components and display helpers (`Display`, `displayTitle`, `label(forProject:)`).
+- `TimeitApp`: `AppStore` (main-actor, `@Observable`) owns all workspace mutations and the rules views rely on (`nextTimerProject`, `canResume`, `recentResumable`, `visibleEntries`, `trackedSeconds`). Views call store methods, read those results, and never write to `LocalDatabase` directly. `Theme.swift` holds tokens, shared components and display helpers (`Display`, `displayTitle`, `label(forProject:)`). The accent is `Resources/Assets.xcassets/AccentColor`, copied into the app bundle by `scripts/build-macos.sh`.
 - Period math lives in TimeitCore `Finance` (`segments`, `seconds`, `rateKey`, `summarize`); do not re-sum segments in views. Calendar drags snap through `CalendarMove`.
 - `Commands.swift`: `AppShortcut` is the single table of in-app shortcuts (menus, palette, Settings); `AppStore.paletteCommands(matching:weekSeconds:)` and `perform(_:)` own the command palette.
 - `LocalDatabase` writes narrowly: `saveEdit` for edits, `saveSync` for sync bookkeeping, `saveRates` for the rate cache, `save` only when document and sync change together.
@@ -40,8 +40,8 @@ Before finishing a change: format, lint, run the tests of every package you touc
 - UI copy is French; code, comments, commits and docs are English.
 - Amounts and percentages are decimal strings on the wire and `Decimal` in Swift. Never use `Double` for money.
 - Durations derive from persisted instants. A UI timer is never the source of elapsed time.
-- Follow `DESIGN.md`: flat content surfaces, one accent, no gradients or glows, motion only for state changes.
-- Liquid Glass only through `glass(_:tint:radius:)` and its roles (`selection`, `control`, `accent`, `panel`) in `Glass.swift`; never call `glassEffect` directly. Glass marks what is live or floating, never content.
+- Follow `DESIGN.md`: system components first (toolbar, `Table`, `Form`, `ContentUnavailableView`, push buttons), system text styles instead of point sizes, `Theme.accent` (`Color.accentColor`) instead of hard-coded brand colors, no hover on list rows.
+- Liquid Glass only through `glass(_:tint:radius:)` (`selection`, `panel`) in `Glass.swift`; never call `glassEffect` directly, never on content.
 - Never add looping animations (`repeatForever`, repeating `symbolEffect`). They recomposite the whole glass window every frame; `runningTimerStaysCheapToRender` fails above 10 % CPU.
 - `TimelineView` only where a value changes over time (running timer); finished rows render static text.
 

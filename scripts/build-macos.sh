@@ -11,6 +11,8 @@ cp "$ROOT/apps/macos/Info.plist" "$APP/Contents/Info.plist"
 for bundle in "$BIN/"*.bundle; do
   if [[ -d "$bundle" ]]; then cp -R "$bundle" "$APP/Contents/Resources/"; fi
 done
+# The app's own catalog must sit in the main bundle for NSAccentColorName to reach native controls.
+cp "$BIN/Timeit_TimeitApp.bundle/Contents/Resources/Assets.car" "$APP/Contents/Resources/Assets.car"
 LICENSES="$APP/Contents/Resources/Licenses"
 mkdir -p "$LICENSES"
 for dependency in GRDB.swift AppAuth-iOS Valet; do

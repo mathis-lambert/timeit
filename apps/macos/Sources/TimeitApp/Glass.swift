@@ -1,26 +1,19 @@
 import SwiftUI
 
-/// What a glass surface is for. The more a surface matters, the more glass it is.
+/// What a glass surface is for. Glass marks what floats or what is live; content stays opaque.
 /// No view applies `glassEffect` directly; everything goes through `glass(_:tint:radius:)`.
 enum GlassRole {
-    /// What is live or chosen right now: the running timer, the running row, the palette's highlighted command.
+    /// What is live or chosen right now: the running timer, the palette's highlighted command.
     case selection
-    /// A control floating on the content: the composer, a filter chip.
-    case control
-    /// A control that acts or is on: the start and stop buttons, filled with `tint`.
-    case accent
-    /// Anything floating over the window: the command palette, the example-workspace badge.
+    /// Anything floating over the window: the command palette.
     case panel
 }
 
 extension View {
-    /// Liquid Glass behind the view, in a continuous rounded rectangle (`radius = height / 2` for a capsule).
-    /// With Reduce Transparency it becomes an opaque fill with a hairline. Passing `id` lets a surrounding
-    /// `GlassEffectContainer` morph this surface into another one with the same id.
-    func glass(
-        _ role: GlassRole, tint: Color? = nil, radius: CGFloat, id: String? = nil, in namespace: Namespace.ID? = nil
-    ) -> some View {
-        modifier(GlassSurface(role: role, tint: tint, radius: radius, id: id, namespace: namespace))
+    /// Liquid Glass on the view, in a continuous rounded rectangle. With Reduce Transparency it becomes an
+    /// opaque fill with a hairline.
+    func glass(_ role: GlassRole, tint: Color? = nil, radius: CGFloat) -> some View {
+        modifier(GlassSurface(role: role, tint: tint, radius: radius))
     }
 
     /// A fine accent ring and faint halo around a floating panel. When the panel appears, one band of light
@@ -29,62 +22,41 @@ extension View {
         modifier(LightRing(color: color, radius: radius))
     }
 
-    /// Marks what is running: a selection lens tinted with the project color while `tint` is set.
-    /// Otherwise the view keeps its resting surface: a card, or nothing.
-    func liveLens(_ tint: Color?, radius: CGFloat, restingCard: Bool = false) -> some View {
-        background {
-            let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-            if let tint {
-                Color.clear.glass(.selection, tint: tint, radius: radius)
-            } else if restingCard {
-                shape.fill(Theme.surface).overlay { shape.strokeBorder(Theme.hairline, lineWidth: 0.5) }
-            }
-        }
+    /// Marks what is running with a selection lens tinted with the project color.
+    func liveLens(_ tint: Color, radius: CGFloat) -> some View {
+        background { Color.clear.glass(.selection, tint: tint, radius: radius) }
     }
 
     /// For panels over the window: the command palette.
     func panelShadow() -> some View { shadow(color: .black.opacity(0.16), radius: 32, y: 16) }
-    /// For small floating surfaces: badges and toasts.
-    func floatShadow() -> some View { shadow(color: .black.opacity(0.12), radius: 14, y: 6) }
 }
 
 private struct GlassSurface: ViewModifier {
     let role: GlassRole
     let tint: Color?
     let radius: CGFloat
-    let id: String?
-    let namespace: Namespace.ID?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var scheme
 
     @ViewBuilder func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        // Applied to the view itself, so its content draws on top of the glass, including inside a
-        // `GlassEffectContainer`, which would otherwise merge a background glass layer over the content.
         if reduceTransparency {
             content.background { shape.fill(opaqueFill).overlay { shape.strokeBorder(Theme.hairline) } }
-        } else if let id, let namespace {
-            content.glassEffect(glass, in: shape).glassEffectID(id, in: namespace)
         } else {
             content.glassEffect(glass, in: shape)
         }
     }
 
     private var glass: Glass {
-        let dark = scheme == .dark
         switch role {
-        case .selection: return .regular.tint(tint?.opacity(dark ? 0.26 : 0.14)).interactive()
-        case .control: return .regular.tint(tint?.opacity(dark ? 0.16 : 0.08)).interactive()
-        case .accent: return .regular.tint(tint ?? Theme.accent).interactive()
-        case .panel: return .regular
+        case .selection: .regular.tint(tint?.opacity(scheme == .dark ? 0.26 : 0.14)).interactive()
+        case .panel: .regular
         }
     }
 
     private var opaqueFill: Color {
         switch role {
         case .selection: (tint ?? .primary).opacity(scheme == .dark ? 0.22 : 0.12)
-        case .control: Color(nsColor: .controlBackgroundColor)
-        case .accent: tint ?? Theme.accent
         case .panel: Color(nsColor: .windowBackgroundColor)
         }
     }

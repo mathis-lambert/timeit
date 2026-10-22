@@ -4,121 +4,84 @@ import TimeitCore
 
 // MARK: - Composer
 
-/// The primary surface: an idle composer that morphs into the running timer, whatever starts or stops it
-/// (button, ⌘↩, the global shortcut, the palette or the menu bar).
+/// The primary surface on the overview: describe the work, pick a project, start. While a timer runs it
+/// shows what is running and how long, with Stop.
 struct TimerComposer: View {
     @Bindable var store: AppStore
-    @Namespace private var glass
-    private static let radius: CGFloat = 16
     var body: some View {
-        GlassEffectContainer(spacing: 10) {
-            HStack(spacing: 10) {
-                if let entry = store.running {
-                    running(entry)
-                } else {
-                    idle
-                }
+        Group {
+            if let entry = store.running {
+                running(entry)
+            } else {
+                idle
             }
         }
         .shellAnimation(value: store.running?.id)
     }
 
     private var idle: some View {
-        Group {
-            HStack(spacing: 12) {
-                Image(systemName: "pencil.line").foregroundStyle(.tertiary)
-                TextField("Sur quoi travaillez-vous ?", text: $store.timerTitle)
-                    .textFieldStyle(.plain).font(.system(size: 15))
-                    .onSubmit(start)
-                    .accessibilityLabel("Description de l’activité")
-                ProjectChip(store: store)
+        HStack(spacing: 10) {
+            TextField("Sur quoi travaillez-vous ?", text: $store.timerTitle)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(store.toggleTimer)
+                .accessibilityLabel("Description de l’activité")
+            ProjectPicker(store: store).frame(maxWidth: 220)
+            Button(action: store.toggleTimer) {
+                Label("Démarrer", systemImage: "play.fill")
             }
-            .padding(.leading, 16).padding(.trailing, 8).frame(height: 52)
-            .glass(.control, radius: Self.radius, id: "bar", in: glass)
-            Button(action: start) {
-                Image(systemName: "play.fill").font(.system(size: 16, weight: .semibold))
-                    .frame(width: 52, height: 52)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .glass(.accent, tint: Theme.accent, radius: 26, id: "action", in: glass)
+            .buttonStyle(.borderedProminent)
             .disabled(store.nextTimerProject == nil)
-            .help("Démarrer (↩)")
-            .accessibilityLabel("Démarrer le timer")
+            .help("Démarrer le timer (↩)")
         }
+        .controlSize(.large)
+        .card(padding: 14)
     }
 
     private func running(_ entry: TimeEntry) -> some View {
-        let project = store.workspace.project(entry.projectID)
-        let tint = project?.color.tint ?? Theme.accent
-        return Group {
-            HStack(spacing: 12) {
-                LiveDot(color: tint, size: 9)
-                VStack(alignment: .leading, spacing: 2) {
-                    Button {
-                        store.entryEditor = EntryEditorRequest(entry: entry)
-                    } label: {
-                        Text(entry.displayTitle)
-                            .font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                    }
-                    .buttonStyle(.plain).help("Modifier le timer actif")
-                    Text(
-                        store.workspace.label(forProject: entry.projectID)
-                    )
-                    .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+        let tint = store.workspace.project(entry.projectID)?.color.tint ?? Theme.accent
+        return HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Button {
+                    store.entryEditor = EntryEditorRequest(entry: entry)
+                } label: {
+                    Text(entry.displayTitle).font(.headline).lineLimit(1)
                 }
-                Spacer(minLength: 12)
-                TimelineView(.periodic(from: entry.start, by: 1)) { context in
-                    Text(Display.duration(entry.duration(at: context.date), seconds: true))
-                        .font(.system(size: 26, weight: .medium, design: .rounded)).monospacedDigit()
+                .buttonStyle(.plain).help("Modifier le timer actif")
+                Label {
+                    Text(store.workspace.label(forProject: entry.projectID))
+                } icon: {
+                    Image(systemName: "circle.fill").foregroundStyle(tint).imageScale(.small)
                 }
+                .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
-            .padding(.leading, 16).padding(.trailing, 20).frame(height: 64)
-            .glass(.selection, tint: tint, radius: Self.radius, id: "bar", in: glass)
+            Spacer(minLength: 12)
+            TimelineView(.periodic(from: entry.start, by: 1)) { context in
+                Text(Display.duration(entry.duration(at: context.date), seconds: true))
+                    .font(.system(.title, weight: .medium)).monospacedDigit()
+            }
             Button(action: store.stop) {
-                Image(systemName: "stop.fill").font(.system(size: 16, weight: .semibold))
-                    .frame(width: 64, height: 64)
-                    .contentShape(Circle())
+                Label("Arrêter", systemImage: "stop.fill")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .glass(.accent, tint: tint, radius: 32, id: "action", in: glass)
-            .help("Arrêter (⌘↩)")
-            .accessibilityLabel("Arrêter le timer")
+            .controlSize(.large)
+            .help("Arrêter le timer (⌘↩)")
         }
+        .padding(14)
+        .liveLens(tint, radius: Theme.cardRadius)
     }
-
-    private func start() { store.toggleTimer() }
 }
 
-/// Project selector for the next timer, used by the composer and the menu bar.
-struct ProjectChip: View {
+/// The project the next timer starts on.
+struct ProjectPicker: View {
     @Bindable var store: AppStore
     var body: some View {
-        let project = store.nextTimerProject
-        Menu {
-            Picker("Projet", selection: $store.timerProjectID) {
-                ForEach(store.workspace.activeProjects) { item in
-                    Text(item.name).tag(Optional(item.id))
-                }
+        Picker("Projet", selection: $store.timerProjectID) {
+            ForEach(store.workspace.activeProjects) { project in
+                Text(project.name).tag(Optional(project.id))
             }
-            .pickerStyle(.inline)
-        } label: {
-            HStack(spacing: 6) {
-                if let project { ProjectMark(color: project.color, size: 7) }
-                Text(project?.name ?? "Choisir un projet").lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 8.5, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .font(.system(size: 12, weight: .medium))
-            .padding(.horizontal, 10).frame(height: 28)
-            .background(Color.primary.opacity(0.06), in: Capsule())
-            .contentShape(Capsule())
         }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .labelsHidden()
+        .tint(.primary)
         .help("Projet du prochain timer")
-        .accessibilityLabel("Projet : \(project?.name ?? "aucun")")
     }
 }
 
@@ -129,100 +92,105 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                BrandMark(size: 16, progress: store.weekProgress)
-                Wordmark(size: 15)
-                if store.isDemo {
-                    Text("Exemple").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Timeit").font(.headline)
+                if store.isDemo { Text("Exemple").font(.subheadline).foregroundStyle(.secondary) }
                 Spacer()
                 Button {
                     openSettings()
                     NSApp.activate(ignoringOtherApps: true)
                 } label: {
-                    Image(systemName: "gearshape")
+                    Label("Réglages", systemImage: "gearshape")
                 }
-                .buttonStyle(.borderless).foregroundStyle(.secondary)
-                .help("Réglages").accessibilityLabel("Réglages")
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .help("Réglages")
             }
             timer
             let recent = store.recentResumable()
             if !recent.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Reprendre").eyebrow().padding(.leading, 6).padding(.bottom, 4)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Reprendre").fieldLabel().padding(.horizontal, 8).padding(.bottom, 4)
                     ForEach(recent) { entry in
                         let project = store.workspace.project(entry.projectID)
-                        Button {
+                        MenuRow {
                             store.resume(entry)
                         } label: {
-                            HStack(spacing: 10) {
-                                ProjectMark(color: project?.color ?? .coral)
+                            Label {
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(entry.displayTitle)
-                                        .font(.system(size: 12.5)).lineLimit(1)
-                                    Text(project?.name ?? "").font(.system(size: 10.5)).foregroundStyle(.secondary)
+                                    Text(entry.displayTitle).lineLimit(1)
+                                    Text(project?.name ?? "").font(.subheadline).foregroundStyle(.secondary)
                                 }
-                                Spacer(minLength: 0)
-                                Image(systemName: "play.fill").font(.system(size: 9)).foregroundStyle(.tertiary)
+                            } icon: {
+                                Image(systemName: "circle.fill")
+                                    .foregroundStyle(project?.color.tint ?? Theme.accent).imageScale(.small)
                             }
-                            .padding(.horizontal, 6).padding(.vertical, 5).hoverHighlight()
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
             Divider()
-            HStack {
-                Button("Ouvrir Timeit") {
+            VStack(spacing: 0) {
+                MenuRow {
                     openWindow(id: "main")
                     NSApp.activate(ignoringOtherApps: true)
+                } label: {
+                    Text("Ouvrir Timeit")
                 }
-                Spacer()
-                Button("Quitter") { NSApp.terminate(nil) }.foregroundStyle(.secondary)
+                MenuRow {
+                    NSApp.terminate(nil)
+                } label: {
+                    Text("Quitter Timeit")
+                }
             }
-            .buttonStyle(.borderless).font(.system(size: 12))
         }
-        .padding(14).frame(width: 320)
+        .padding(12).frame(width: 300)
     }
 
     private var timer: some View {
-        let tint = store.running.flatMap { store.workspace.project($0.projectID)?.color.tint } ?? Theme.accent
-        return VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             if let entry = store.running {
-                HStack(spacing: 6) {
-                    LiveDot(color: tint, size: 7)
-                    Text(store.workspace.project(entry.projectID)?.name ?? "").font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.workspace.label(forProject: entry.projectID)).font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    TimelineView(.periodic(from: entry.start, by: 1)) { context in
+                        Text(Display.duration(entry.duration(at: context.date), seconds: true))
+                            .font(.system(size: 34, weight: .medium)).monospacedDigit()
+                    }
+                    Text(entry.displayTitle).lineLimit(2)
                 }
-                TimelineView(.periodic(from: entry.start, by: 1)) { context in
-                    Text(Display.duration(entry.duration(at: context.date), seconds: true))
-                        .font(.system(size: 38, weight: .medium, design: .rounded)).monospacedDigit()
+                Button(action: store.stop) {
+                    Label("Arrêter", systemImage: "stop.fill").frame(maxWidth: .infinity)
                 }
-                Text(entry.displayTitle)
-                    .font(.system(size: 13, weight: .medium)).lineLimit(2)
             } else {
                 TextField("Sur quoi travaillez-vous ?", text: $store.timerTitle)
-                    .textFieldStyle(.roundedBorder).controlSize(.large)
-                    .onSubmit { store.toggleTimer() }
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(store.toggleTimer)
                     .accessibilityLabel("Description de l’activité")
-                ProjectChip(store: store)
+                ProjectPicker(store: store)
+                Button(action: store.toggleTimer) {
+                    Label("Démarrer", systemImage: "play.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.nextTimerProject == nil)
             }
-            Button {
-                store.toggleTimer()
-            } label: {
-                Label(
-                    store.running == nil ? "Démarrer" : "Arrêter",
-                    systemImage: store.running == nil ? "play.fill" : "stop.fill"
-                )
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glassProminent).controlSize(.large)
-            .tint(tint)
-            .disabled(store.running == nil && store.nextTimerProject == nil)
         }
-        .padding(14)
-        .liveLens(store.running == nil ? nil : tint, radius: Theme.cardRadius, restingCard: true)
+        .controlSize(.large)
+    }
+}
+
+/// A full-width row that highlights under the pointer, like a menu item.
+private struct MenuRow<Label: View>: View {
+    let action: () -> Void
+    @ViewBuilder var label: Label
+    var body: some View {
+        Button(action: action) {
+            label.frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .hoverHighlight()
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -244,9 +212,9 @@ struct CommandPalette: View {
                 .onTapGesture(perform: close)
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 15)).foregroundStyle(.secondary)
+                    Image(systemName: "magnifyingglass").font(.title3).foregroundStyle(.secondary)
                     TextField("Démarrer un projet, créer, naviguer…", text: $store.launcherQuery)
-                        .textFieldStyle(.plain).font(.system(size: 17))
+                        .textFieldStyle(.plain).font(.title3)
                         .focused($focused)
                         .onSubmit { run(items) }
                         .onKeyPress(.downArrow) {
@@ -274,7 +242,7 @@ struct CommandPalette: View {
                             }
                             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                                 if index == 0 || items[index - 1].section != item.section {
-                                    Text(item.section.rawValue).font(.system(size: 11, weight: .medium))
+                                    Text(item.section.rawValue).font(.subheadline.weight(.medium))
                                         .foregroundStyle(.secondary)
                                         .padding(.horizontal, 10).padding(.top, index == 0 ? 4 : 10).padding(
                                             .bottom, 4)
@@ -303,7 +271,7 @@ struct CommandPalette: View {
                     KeyCap("↑")
                     KeyCap("↓")
                 }
-                .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                .font(.subheadline).foregroundStyle(.secondary)
                 .padding(.horizontal, 12).frame(height: 36)
             }
             .frame(width: 600)
@@ -325,14 +293,14 @@ struct CommandPalette: View {
 
     private func row(_ item: PaletteCommand, selected: Bool) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: item.symbol).font(.system(size: item.section == .start ? 8 : 13))
+            Image(systemName: item.symbol).imageScale(item.section == .start ? .small : .medium)
                 .foregroundStyle(item.tint).frame(width: 20)
-            Text(item.title).font(.system(size: 13.5)).lineLimit(1)
-            Text(item.subtitle).font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(1)
+            Text(item.title).lineLimit(1)
+            Text(item.subtitle).foregroundStyle(.secondary).lineLimit(1)
             Spacer(minLength: 8)
             if let shortcut = item.shortcut { KeyCap(shortcut.label) }
             if let detail = item.detail {
-                Text(detail).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.tertiary)
+                Text(detail).font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 10).frame(height: 36)

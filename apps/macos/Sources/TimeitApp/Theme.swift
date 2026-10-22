@@ -4,7 +4,9 @@ import TimeitCore
 
 /// Design tokens. See DESIGN.md.
 enum Theme {
-    static let accent = Color(light: 0xD9482A, dark: 0xF57352)
+    /// The app accent declared in the asset catalog (`NSAccentColorName`); follows the user's system accent
+    /// when they pick one other than multicolor, like every native app.
+    static let accent = Color.accentColor
     static let positive = Color(light: 0x16855C, dark: 0x4CC994)
     /// Content surfaces are opaque fills; glass is reserved for floating controls.
     static let surface = Color.primary.opacity(0.035)
@@ -110,10 +112,9 @@ extension View {
                 RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).strokeBorder(
                     Theme.hairline, lineWidth: 0.5))
     }
-    /// Small uppercase label used for column headers and metric names.
-    func eyebrow() -> some View {
-        font(.system(size: 10.5, weight: .semibold)).tracking(0.6).textCase(.uppercase).foregroundStyle(.secondary)
-    }
+    /// Secondary label above a value or for a column, in the system's subheadline style.
+    func fieldLabel() -> some View { font(.subheadline).foregroundStyle(.secondary) }
+    /// Hover feedback for menu-like rows (menu-bar panel). Lists and tables do not use it.
     func hoverHighlight() -> some View { modifier(HoverHighlight()) }
 }
 
@@ -130,45 +131,7 @@ private struct HoverHighlight: ViewModifier {
     }
 }
 
-// MARK: - Identity
-
-/// The Timeit mark: a ring that fills with the week's progress toward the weekly goal.
-struct BrandMark: View {
-    var size: CGFloat = 22
-    var progress: Double
-    var body: some View {
-        let line = max(2, size * 0.13)
-        ZStack {
-            Circle().stroke(Theme.accent.opacity(0.2), lineWidth: line)
-            Circle().trim(from: 0, to: max(0.04, min(1, progress)))
-                .stroke(Theme.accent, style: StrokeStyle(lineWidth: line, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            Circle().fill(Theme.accent).frame(width: size * 0.3, height: size * 0.3)
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
-    }
-}
-
-struct Wordmark: View {
-    var size: CGFloat = 19
-    var body: some View {
-        Text("timeit").font(.system(size: size, weight: .bold, design: .rounded)).tracking(-size * 0.03)
-    }
-}
-
-/// Recording indicator. Static on purpose: a repeating effect here forces the whole
-/// glass window to recomposite every frame (≈100 % CPU while a timer runs).
-struct LiveDot: View {
-    var color: Color = Theme.accent
-    var size: CGFloat = 8
-    var body: some View {
-        Image(systemName: "record.circle.fill")
-            .font(.system(size: size + 2))
-            .foregroundStyle(color)
-            .accessibilityLabel("En cours")
-    }
-}
+// MARK: - Components
 
 struct ProjectMark: View {
     let color: ProjectColor
@@ -183,43 +146,10 @@ struct KeyCap: View {
     init(_ keys: String) { self.keys = keys }
     var body: some View {
         Text(keys)
-            .font(.system(size: 10.5, weight: .medium))
+            .font(.caption.monospaced())
             .foregroundStyle(.secondary)
             .padding(.horizontal, 5).frame(minWidth: 20, minHeight: 18)
             .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-    }
-}
-
-struct ProgressRing: View {
-    let value: Double
-    private let tint = Theme.accent
-    private let size: CGFloat = 36
-    private let line: CGFloat = 4
-    var body: some View {
-        ZStack {
-            Circle().stroke(tint.opacity(0.15), lineWidth: line)
-            Circle().trim(from: 0, to: max(0.001, min(1, value)))
-                .stroke(tint, style: StrokeStyle(lineWidth: line, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-        }
-        .frame(width: size, height: size)
-    }
-}
-
-/// Page header shared by every screen.
-struct PageHeader<Trailing: View>: View {
-    let title: String
-    var subtitle: String? = nil
-    @ViewBuilder var trailing: Trailing
-    var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 26, weight: .bold)).tracking(-0.6)
-                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(.secondary) }
-            }
-            Spacer(minLength: 12)
-            trailing
-        }
     }
 }
 
@@ -230,8 +160,8 @@ struct CardHeader<Trailing: View>: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 14, weight: .semibold))
-                if let subtitle { Text(subtitle).font(.system(size: 11.5)).foregroundStyle(.secondary) }
+                Text(title).font(.headline)
+                if let subtitle { Text(subtitle).font(.subheadline).foregroundStyle(.secondary) }
             }
             Spacer(minLength: 8)
             trailing
@@ -245,6 +175,7 @@ extension CardHeader where Trailing == EmptyView {
     }
 }
 
+/// The system's empty state, with at most one action.
 struct EmptyState: View {
     let symbol: String
     let title: String
@@ -252,16 +183,12 @@ struct EmptyState: View {
     var action: String? = nil
     var perform: () -> Void = {}
     var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: symbol).font(.system(size: 26, weight: .regular)).foregroundStyle(.tertiary)
-                .padding(.bottom, 4)
-            Text(title).font(.system(size: 16, weight: .semibold))
-            Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                .frame(maxWidth: 340)
-            if let action {
-                Button(action, action: perform).buttonStyle(.glassProminent).controlSize(.large).padding(.top, 6)
-            }
+        ContentUnavailableView {
+            Label(title, systemImage: symbol)
+        } description: {
+            Text(detail)
+        } actions: {
+            if let action { Button(action, action: perform) }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity).padding(36)
     }
 }

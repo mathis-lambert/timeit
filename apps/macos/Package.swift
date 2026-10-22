@@ -18,7 +18,8 @@ let package = Package(
             dependencies: [
                 "TimeitCore", "KeyboardShortcuts", "Valet",
                 .product(name: "AppAuth", package: "AppAuth-iOS"),
-            ]),
+            ],
+            resources: [.process("Resources")]),
         .testTarget(name: "TimeitCoreTests", dependencies: ["TimeitCore"]),
         .testTarget(name: "TimeitAppTests", dependencies: ["TimeitApp"]),
     ]
