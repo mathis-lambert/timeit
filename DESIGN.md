@@ -2,22 +2,39 @@
 
 ## Direction
 
-A native macOS time tracker for independent professionals, used many times a day. Adjectives: precise, calm, fast. The identity comes from macOS itself, used well, rather than from custom decoration: the app should feel like it shipped next to Calendar and Reminders.
+A native macOS time tracker for independent professionals, used many times a day. Adjectives: precise, calm, fast. The frame is macOS itself (window, sidebar, toolbar, Settings, menus) so the app feels at home next to Calendar; the content is a small custom component kit in the spirit of [shadcn/ui](https://ui.shadcn.com): crisp borders, a neutral ink primary, quiet states, one radius family.
 
 Sources: Apple's [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/designing-for-macos) (sidebars, toolbars, color), Gruber's ["Mac-assed Mac apps"](https://daringfireball.net/2020/11/sketch_mac_app_mac_apps) (conventions, familiarity, craft), and Evil Martians' [macOS look](https://evilmartians.com/chronicles/how-to-make-absolutely-any-app-look-like-a-macos-app) (hover and selection rules). Raycast inspires the command palette only.
 
 ## Rules
 
-1. **System components before custom ones.** `NavigationSplitView` with a `.sidebar` list, the window toolbar, `Table`, `Form`, `ContentUnavailableView`, `Picker`, `ControlGroup`, push buttons. A custom view needs a reason a system one cannot meet (the calendar grid, the charts, the palette).
+1. **Native frame, custom content.** `NavigationSplitView` with a `.sidebar` list, the window toolbar, menus and the Settings form stay native. Inside the content, every control comes from `Components.swift`, never a one-off style.
 2. **The window is the frame.** The screen name is the window title (`navigationTitle`), the period is its subtitle. Period navigation lives in the toolbar like Calendar: a Semaine/Mois segmented control, then ‹ Aujourd'hui ›. No page titles or marketing headlines in the content.
 3. **One accent, the native way.** `AccentColor` in the asset catalog, declared with `NSAccentColorName`, so sidebar icons, selection, focus rings and prominent buttons share it, and a user who picks another system accent sees theirs. In code, `Theme.accent` is `Color.accentColor`; never a hard-coded brand color.
 4. **System text styles.** `.largeTitle` for metric values, `.title` for the running timer, `.headline` for card titles, `.body`, `.subheadline` for secondary lines, `.caption` for axes and the calendar. No fixed point sizes, no rounded design, no uppercase tracked labels. Durations and amounts use monospaced digits.
-5. **Buttons are buttons.** Push buttons for actions (`.borderedProminent` for the one primary action of a context), toolbar buttons with symbols and help tags, menus for secondary actions. No round floating action buttons, no colored text links as buttons.
-6. **Lists do not hover.** Rows highlight only when selected or running; actions are in the context menu, double-click opens the editor. Menu-like rows (the menu-bar panel) highlight under the pointer.
+5. **Buttons are buttons.** One `primary` (ink) per context, `outline` or `secondary` beside it, `ghost` and `IconButton` for row actions, `destructiveGhost` for Delete in a dialog. No round floating action buttons, no colored text links.
+6. **Tables are calm.** A header with a rule, rows with a rule between them, a faint fill under the pointer, the running row washed with its project color; double-click edits, the context menu holds the rest.
+
+## Components (Components.swift)
+
+| Piece | After shadcn | Here |
+| --- | --- | --- |
+| Button | variants default, secondary, outline, ghost, destructive | `TimeitButtonStyle(kind:large:)`, 30 / 34 pt high, radius 7, hover and press overlays, 45 % when disabled |
+| Input | 1 px border, shadow-xs, 3 px focus ring | `timeitField()` and `inputFrame()`: surface, `Control.border`, accent border and ring while focused |
+| Select | trigger shaped like an input | `SelectField`, `ProjectMenu` (color dot, grouped by client), `CurrencyPicker` |
+| Tabs | muted track, raised active tab | `SegmentedControl`, the raised tab slides with the shell spring |
+| Switch | label and description beside a switch | `SwitchRow` |
+| Badge | small rounded label | `Badge` for "En cours", "Non facturable", "En attente", counts |
+| Card | border, rounded-xl, faint shadow | `card()`: `Control.surface`, radius 12, `Control.border`, shadow at 4 % |
+| Table | header rule, row rules, muted hover | `ColumnHeader`, `ListRow`, `ShareBar` |
+| Kbd | muted key | `KeyCap`, with an on-ink variant inside the primary button |
+| Empty | icon tile, title, description, action | `EmptyState` |
+
+Tokens live in `Control`: `border` (#E4E4E7 / #3A3A3F), `muted`, `surface`, `ink` and `onInk`, `hover`, `pressed`.
 
 ## Color
 
-System backgrounds and labels everywhere. The accent marks selection and the primary action. Green (`Theme.positive`) marks estimated net income. Project colors (coral, blue, green, purple, gold, each with a dark sibling) appear as small dots, chart segments and calendar fills, always next to the project name.
+System backgrounds and labels for the frame; `Control` tokens for the content. The primary button is ink, not accent. The accent marks selection, focus, the running timer and today. Green (`Theme.positive`) marks estimated net income. Project colors (coral, blue, green, purple, gold, each with a dark sibling) appear as small dots, chart segments and calendar fills, always next to the project name.
 
 ## Layout
 
@@ -25,7 +42,9 @@ System backgrounds and labels everywhere. The accent marks selection and the pri
 - **Toolbar**: on every screen, the running timer (project, elapsed time, Stop), the project filter when set, "Quitter l'exemple" in the example workspace, the palette and Add. Each screen adds its own items: period controls (overview, calendar, reports), Actifs/Archives and New project (projects), Export (reports).
 - **Overview**: the composer (description field, project popup, Démarrer), the metrics strip with goal progress, the weekly chart beside the breakdown, sessions grouped by day.
 - **Calendar**: full bleed like Calendar, day totals in the header, tinted events, a thin "now" line. Dragging across empty time draws a session with a dashed outline snapped to quarter hours, then opens the session editor on those times; dragging an event shows its landing spot the same way.
-- **Projects and reports**: native tables with numeric columns aligned to the trailing edge.
+- **Projects**: one card per client holding a table (project, rate, this week, total, row actions).
+- **Reports**: the metrics strip, then a card with a table of projects, share bars and amounts.
+- **Editors**: dialog layout with labels above fields, a project select, field-style date pickers, switch rows and the dialog buttons at the bottom right.
 
 ## Glass (Glass.swift)
 

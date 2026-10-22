@@ -7,9 +7,13 @@ struct CurrencyPicker: View {
         (code, "\(code) · \(Locale.current.localizedString(forCurrencyCode: code) ?? code)")
     }
     var body: some View {
-        Picker("Devise", selection: $selection) {
-            ForEach(Self.options, id: \.0) { code, label in Text(label).tag(code) }
+        SelectField(title: Self.options.first { $0.0 == selection }?.1 ?? selection) {
+            Picker("Devise", selection: $selection) {
+                ForEach(Self.options, id: \.0) { code, label in Text(label).tag(code) }
+            }
+            .pickerStyle(.inline)
         }
+        .accessibilityLabel("Devise")
     }
 }
 
@@ -43,51 +47,68 @@ struct EntryEditor: View {
             initialValue: request.entry?.billable ?? projectID.flatMap(store.workspace.project)?.billable ?? true)
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            SheetHeader(title: request.entry == nil ? "Ajouter une session" : "Modifier la session")
-            Form {
-                TextField("Activité", text: $title).focused($focused)
-                Picker("Projet", selection: $projectID) {
-                    ForEach(store.workspace.projects.filter { !$0.archived || $0.id == request.entry?.projectID }) {
-                        project in
-                        Text(store.workspace.label(forProject: project.id, separator: " / ")).tag(
-                            Optional(project.id))
+        VStack(alignment: .leading, spacing: 18) {
+            SheetHeader(
+                title: request.entry == nil ? "Ajouter une session" : "Modifier la session",
+                subtitle: "Le tarif et les prélèvements sont figés avec la session.")
+            FieldRow(label: "Activité") {
+                TextField("Sur quoi avez-vous travaillé ?", text: $title).timeitField().focused($focused)
+            }
+            FieldRow(label: "Projet") {
+                ProjectMenu(store: store, selection: $projectID, includeArchived: request.entry?.projectID)
+            }
+            HStack(alignment: .top, spacing: 12) {
+                FieldRow(label: "Début") {
+                    DatePicker("Début", selection: $start, displayedComponents: [.date, .hourAndMinute])
+                        .labelsHidden().datePickerStyle(.field)
+                }
+                if !running {
+                    FieldRow(label: "Fin") {
+                        DatePicker("Fin", selection: $end, displayedComponents: [.date, .hourAndMinute])
+                            .labelsHidden().datePickerStyle(.field)
                     }
                 }
-                DatePicker("Début", selection: $start, displayedComponents: [.date, .hourAndMinute])
-                if !running { DatePicker("Fin", selection: $end, displayedComponents: [.date, .hourAndMinute]) }
-                Toggle("Facturable", isOn: $billable)
-                if editsRunningEntry { Toggle("Timer en cours", isOn: $running) }
-            }.formStyle(.grouped).scrollDisabled(true).frame(height: running ? 230 : 260)
+                Spacer(minLength: 0)
+            }
             if let project = projectID.flatMap(store.workspace.project) {
-                HStack(spacing: 18) {
-                    Label(
-                        Display.duration((running ? Date.now : end).timeIntervalSince(start)), systemImage: "timer")
-                    Label(
-                        "\(Display.money(.amount(request.entry?.projectID == project.id ? request.entry!.hourlyRate : project.hourlyRate), currency: project.currency)) / h",
-                        systemImage: "eurosign")
+                HStack(spacing: 8) {
+                    Badge(text: Display.duration((running ? Date.now : end).timeIntervalSince(start)))
+                    Badge(
+                        text:
+                            "\(Display.money(.amount(request.entry?.projectID == project.id ? request.entry!.hourlyRate : project.hourlyRate), currency: project.currency)) / h"
+                    )
                 }
-                .font(.callout).monospacedDigit().foregroundStyle(.secondary)
+                .monospacedDigit()
+            }
+            SwitchRow(title: "Facturable", detail: "Compte dans les honoraires et le net estimé.", isOn: $billable)
+            if editsRunningEntry {
+                SwitchRow(title: "Timer en cours", detail: "Désactivez pour fixer une heure de fin.", isOn: $running)
             }
             if let validation {
                 Label(validation, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)
             }
-            HStack {
+            HStack(spacing: 8) {
                 if let entry = request.entry {
-                    Button("Supprimer", systemImage: "trash", role: .destructive) {
+                    Button {
                         store.delete(entry)
                         dismiss()
+                    } label: {
+                        Label("Supprimer", systemImage: "trash")
                     }
+                    .buttonStyle(TimeitButtonStyle(kind: .destructiveGhost))
                 }
                 Spacer()
-                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Enregistrer", action: save).keyboardShortcut(.defaultAction)
+                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction).buttonStyle(.outline)
+                Button("Enregistrer", action: save).keyboardShortcut(.defaultAction).buttonStyle(.primary)
                     .disabled(projectID == nil)
             }
-        }.padding(20).frame(width: 460).onAppear { focused = true }
-            .onChange(of: projectID) { _, id in
-                if let project = id.flatMap(store.workspace.project) { billable = project.billable }
-            }
+            .padding(.top, 4)
+        }
+        .padding(24).frame(width: 480)
+        .onAppear { focused = true }
+        .onChange(of: projectID) { _, id in
+            if let project = id.flatMap(store.workspace.project) { billable = project.billable }
+        }
     }
     private func save() {
         guard let project = projectID.flatMap(store.workspace.project) else { return }
@@ -141,40 +162,51 @@ struct ProjectEditor: View {
             SheetHeader(
                 title: request.project == nil ? "Nouveau projet" : "Modifier le projet",
                 subtitle: "Un client, un tarif, et vous êtes prêt à commencer.")
-            Form {
-                Section {
-                    TextField("Nom du projet", text: $name).focused($focused)
+            FieldRow(label: "Nom") {
+                TextField("Refonte du site", text: $name).timeitField().focused($focused)
+            }
+            FieldRow(label: "Client") {
+                SelectField(
+                    title: clientID.flatMap { id in store.workspace.clients.first { $0.id == id }?.name }
+                        ?? "Nouveau client"
+                ) {
                     Picker("Client", selection: $clientID) {
-                        Text("Nouveau client…").tag(Optional<UUID>.none)
                         ForEach(store.workspace.clients) { Text($0.name).tag(Optional($0.id)) }
+                        Divider()
+                        Text("Nouveau client…").tag(Optional<UUID>.none)
                     }
-                    if clientID == nil { TextField("Nom du client", text: $newClient) }
-                    LabeledContent("Couleur") {
-                        ColorSwatches(selection: $color)
+                    .pickerStyle(.inline)
+                }
+                if clientID == nil {
+                    TextField("Nom du nouveau client", text: $newClient).timeitField()
+                }
+            }
+            FieldRow(label: "Couleur") { ColorSwatches(selection: $color) }
+            SwitchRow(title: "Temps facturable", detail: "Les sessions comptent dans les honoraires.", isOn: $billable)
+            if billable {
+                HStack(alignment: .top, spacing: 12) {
+                    FieldRow(label: "Tarif horaire HT") {
+                        TextField("85,00", text: $hourlyRate).timeitField().monospacedDigit()
                     }
+                    .frame(width: 150)
+                    FieldRow(label: "Devise") { CurrencyPicker(selection: $currency) }
                 }
-                Section {
-                    Toggle("Temps facturable", isOn: $billable)
-                    CurrencyPicker(selection: $currency)
-                    TextField("Tarif horaire HT", text: $hourlyRate).disabled(!billable)
-                } footer: {
-                    Text(
-                        "Un changement de tarif s’applique aux nouvelles sessions. L’historique conserve son tarif d’origine."
-                    )
-                }
-            }.formStyle(.grouped).scrollDisabled(true).frame(height: clientID == nil ? 360 : 320)
+                Text("Un nouveau tarif s’applique aux sessions suivantes ; l’historique garde le sien.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
             if let validation {
                 Label(validation, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)
             }
-            HStack {
+            HStack(spacing: 8) {
                 Spacer()
-                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(request.project == nil ? "Créer le projet" : "Enregistrer", action: save).keyboardShortcut(
-                    .defaultAction
-                )
+                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction).buttonStyle(.outline)
+                Button(request.project == nil ? "Créer le projet" : "Enregistrer", action: save)
+                    .keyboardShortcut(.defaultAction).buttonStyle(.primary)
             }
-        }.padding(20).frame(width: 460)
-            .onAppear { focused = true }
+            .padding(.top, 4)
+        }
+        .padding(24).frame(width: 480)
+        .onAppear { focused = true }
     }
     private func save() {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -202,8 +234,8 @@ struct SheetHeader: View {
     var subtitle: String? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.title2.weight(.semibold))
-            if let subtitle { Text(subtitle).foregroundStyle(.secondary) }
+            Text(title).font(.title3.weight(.semibold))
+            if let subtitle { Text(subtitle).font(.subheadline).foregroundStyle(.secondary) }
         }
     }
 }
@@ -217,9 +249,14 @@ struct ColorSwatches: View {
                 Button {
                     selection = color
                 } label: {
-                    Circle().fill(color.tint).frame(width: 18, height: 18)
+                    Circle().fill(color.tint).frame(width: 20, height: 20)
+                        .overlay {
+                            if selected {
+                                Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.white)
+                            }
+                        }
                         .padding(3)
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(selected ? 0.5 : 0), lineWidth: 1.5))
+                        .overlay(Circle().strokeBorder(selected ? color.tint : .clear, lineWidth: 1.5))
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)

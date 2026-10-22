@@ -12,7 +12,7 @@ enum Theme {
     static let surface = Color.primary.opacity(0.035)
     static let divider = Color.primary.opacity(0.08)
     static let hairline = Color.primary.opacity(0.06)
-    static let cardRadius: CGFloat = 14
+    static let cardRadius: CGFloat = 12
     static let rowRadius: CGFloat = 8
     static let gutter: CGFloat = 28
 }
@@ -105,12 +105,14 @@ extension Workspace {
 // MARK: - Surfaces
 
 extension View {
+    /// A card: a bordered surface with a faint shadow, on the window's gray.
     func card(padding: CGFloat = 20) -> some View {
         self.padding(padding)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+            .background(Control.surface, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).strokeBorder(
-                    Theme.hairline, lineWidth: 0.5))
+                RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).strokeBorder(Control.border)
+            )
+            .shadow(color: .black.opacity(0.04), radius: 2, y: 1)
     }
     /// Secondary label above a value or for a column, in the system's subheadline style.
     func fieldLabel() -> some View { font(.subheadline).foregroundStyle(.secondary) }
@@ -143,13 +145,19 @@ struct ProjectMark: View {
 
 struct KeyCap: View {
     let keys: String
-    init(_ keys: String) { self.keys = keys }
+    var onInk = false
+    init(_ keys: String, onInk: Bool = false) {
+        self.keys = keys
+        self.onInk = onInk
+    }
     var body: some View {
         Text(keys)
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(onInk ? Control.onInk.opacity(0.7) : .secondary)
             .padding(.horizontal, 5).frame(minWidth: 20, minHeight: 18)
-            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .background(
+                onInk ? Control.onInk.opacity(0.15) : Control.muted,
+                in: RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 }
 
@@ -175,7 +183,7 @@ extension CardHeader where Trailing == EmptyView {
     }
 }
 
-/// The system's empty state, with at most one action.
+/// An empty state: the symbol in a bordered tile, a title, one sentence and at most one action.
 struct EmptyState: View {
     let symbol: String
     let title: String
@@ -183,12 +191,18 @@ struct EmptyState: View {
     var action: String? = nil
     var perform: () -> Void = {}
     var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: symbol)
-        } description: {
-            Text(detail)
-        } actions: {
-            if let action { Button(action, action: perform) }
+        VStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.title2).foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .background(Control.muted, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(spacing: 4) {
+                Text(title).font(.headline)
+                Text(detail).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
+            }
+            if let action { Button(action, action: perform).buttonStyle(.outline).padding(.top, 4) }
         }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

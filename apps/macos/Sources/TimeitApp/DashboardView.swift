@@ -286,29 +286,35 @@ private struct SessionsCard: View {
         let byDay = Dictionary(grouping: entries) { store.calendar.startOfDay(for: $0.start) }
         let shown = Dictionary(grouping: entries.prefix(14)) { store.calendar.startOfDay(for: $0.start) }
             .sorted { $0.key > $1.key }
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             CardHeader(title: "Dernières sessions", subtitle: "\(entries.count) sur la période")
-                .padding(.horizontal, 6).padding(.bottom, 4)
+                .padding(.horizontal, 12).padding(.vertical, 12)
             if entries.isEmpty {
                 EmptyState(
                     symbol: "clock", title: "Rien sur cette période",
-                    detail: "Lancez un timer ou ajoutez une session.",
+                    detail: "Lancez un timer, tracez une session dans le calendrier ou ajoutez-en une.",
                     action: "Ajouter une session"
                 ) { store.entryEditor = EntryEditorRequest() }.frame(height: 240)
             } else {
                 ForEach(shown, id: \.key) { day, dayEntries in
                     HStack {
-                        Text(dayLabel(day)).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(dayLabel(day)).font(.subheadline.weight(.medium))
                         Spacer()
                         Text(Display.duration((byDay[day] ?? dayEntries).reduce(0) { $0 + $1.duration() }))
-                            .font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
+                            .font(.subheadline).monospacedDigit()
                     }
-                    .padding(.horizontal, 8).padding(.top, 10).padding(.bottom, 2)
-                    ForEach(dayEntries) { entry in EntryRow(store: store, entry: entry) }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12).frame(height: 30)
+                    .background(Control.muted.opacity(0.6))
+                    .overlay(alignment: .bottom) { Rectangle().fill(Control.border).frame(height: 1) }
+                    ForEach(dayEntries) { entry in
+                        EntryRow(store: store, entry: entry, isLast: entry.id == shown.last?.value.last?.id)
+                    }
                 }
             }
         }
-        .card(padding: 12)
+        .card(padding: 0)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
     }
     private func dayLabel(_ day: Date) -> String {
         if store.calendar.isDateInToday(day) { return "Aujourd’hui" }
@@ -320,60 +326,40 @@ private struct SessionsCard: View {
 struct EntryRow: View {
     let store: AppStore
     let entry: TimeEntry
-    @State private var hovered = false
+    var isLast = false
     var body: some View {
         let project = store.workspace.project(entry.projectID)
         let resumable = store.canResume(entry)
-        HStack(spacing: 12) {
-            ProjectMark(color: project?.color ?? .coral)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(entry.displayTitle).font(.body)
-                    .lineLimit(1)
-                HStack(spacing: 5) {
-                    Text(
-                        store.workspace.label(forProject: entry.projectID))
-                    if !entry.billable { Text("· Non facturable") }
-                }
-                .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer(minLength: 10)
-            Text(
-                Display.timeRange(entry, calendar: store.calendar)
-            )
-            .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
-            Group {
-                if entry.end == nil {
-                    TimelineView(.periodic(from: entry.start, by: 60)) { context in
-                        Text(Display.duration(entry.duration(at: context.date)))
+        ListRow(highlighted: entry.end == nil ? project?.color.tint ?? Theme.accent : nil, showsRule: !isLast) {
+            HStack(spacing: 12) {
+                Circle().fill(project?.color.tint ?? Theme.accent).frame(width: 8, height: 8)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(entry.displayTitle).lineLimit(1)
+                        if entry.end == nil { Badge(text: "En cours", tint: project?.color.tint) }
+                        if !entry.billable { Badge(text: "Non facturable") }
                     }
-                } else {
-                    Text(Display.duration(entry.duration()))
+                    Text(store.workspace.label(forProject: entry.projectID))
+                        .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                 }
-            }
-            .font(.body).monospacedDigit().frame(width: 60, alignment: .trailing)
-            Button {
-                store.resume(entry)
-            } label: {
-                Image(systemName: "play.circle")
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .frame(width: 22)
-            .opacity(hovered ? 1 : 0)
-            .help("Reprendre cette activité")
-            .accessibilityLabel("Reprendre \(entry.title)")
-            .disabled(!resumable)
-        }
-        .padding(.vertical, 7).padding(.horizontal, 8)
-        .background {
-            // The running session reads as selected, the way a list marks its current item.
-            if entry.end == nil {
-                RoundedRectangle(cornerRadius: Theme.rowRadius, style: .continuous)
-                    .fill((project?.color.tint ?? Theme.accent).opacity(0.12))
+                Spacer(minLength: 10)
+                Text(Display.timeRange(entry, calendar: store.calendar))
+                    .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                Group {
+                    if entry.end == nil {
+                        TimelineView(.periodic(from: entry.start, by: 60)) { context in
+                            Text(Display.duration(entry.duration(at: context.date)))
+                        }
+                    } else {
+                        Text(Display.duration(entry.duration()))
+                    }
+                }
+                .font(.body.weight(.medium)).monospacedDigit().frame(width: 60, alignment: .trailing)
+                IconButton(symbol: "play.fill", label: "Reprendre \(entry.displayTitle)") { store.resume(entry) }
+                    .disabled(!resumable)
+                    .opacity(resumable ? 1 : 0)
             }
         }
-        .contentShape(Rectangle())
-        .onHover { hovered = $0 }
         .onTapGesture(count: 2) { store.entryEditor = EntryEditorRequest(entry: entry) }
         .contextMenu {
             Button("Modifier…", systemImage: "pencil") { store.entryEditor = EntryEditorRequest(entry: entry) }

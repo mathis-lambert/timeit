@@ -40,7 +40,7 @@ Before finishing a change: format, lint, run the tests of every package you touc
 - UI copy is French; code, comments, commits and docs are English.
 - Amounts and percentages are decimal strings on the wire and `Decimal` in Swift. Never use `Double` for money.
 - Durations derive from persisted instants. A UI timer is never the source of elapsed time.
-- Follow `DESIGN.md`: system components first (toolbar, `Table`, `Form`, `ContentUnavailableView`, push buttons), system text styles instead of point sizes, `Theme.accent` (`Color.accentColor`) instead of hard-coded brand colors, no hover on list rows.
+- Follow `DESIGN.md`: native frame (window, sidebar, toolbar, menus, Settings), and inside the content only the components in `Components.swift` (`TimeitButtonStyle`, `timeitField`, `SelectField`, `SegmentedControl`, `SwitchRow`, `Badge`, `ListRow`, `card()`). System text styles instead of point sizes; `Control` tokens and `Theme.accent` instead of ad hoc colors.
 - Liquid Glass only through `glass(_:tint:radius:)` (`selection`, `panel`) in `Glass.swift`; never call `glassEffect` directly, never on content.
 - Never add looping animations (`repeatForever`, repeating `symbolEffect`). They recomposite the whole glass window every frame; `runningTimerStaysCheapToRender` fails above 10 % CPU.
 - `TimelineView` only where a value changes over time (running timer); finished rows render static text.

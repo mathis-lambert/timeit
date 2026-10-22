@@ -27,67 +27,77 @@ struct ReportsView: View {
                 }
             }
             .sorted { $0.summary.seconds > $1.summary.seconds }
-        VStack(spacing: 0) {
-            MetricStrip {
-                Metric(
-                    label: "Temps travaillé", value: Display.duration(summary.seconds),
-                    detail: "\(entries.count) sessions")
-                Metric(
-                    label: "Honoraires HT", value: Display.money(summary.gross, currency: currency),
-                    detail: summary.unconvertedEntries.isEmpty
-                        ? "Convertis en \(currency)" : "Total partiel · conversions en attente",
-                    warning: !summary.unconvertedEntries.isEmpty)
-                Metric(
-                    label: "Net estimé", value: Display.money(summary.net, currency: currency),
-                    detail: "Après prélèvements", tint: Theme.positive)
-            }
-            .padding(Theme.gutter)
-            Table(rows) {
-                TableColumn("Projet") { row in
-                    Label {
-                        Text(row.project.name)
-                    } icon: {
-                        Image(systemName: "circle.fill").foregroundStyle(row.project.color.tint).imageScale(.small)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                MetricStrip {
+                    Metric(
+                        label: "Temps travaillé", value: Display.duration(summary.seconds),
+                        detail: "\(entries.count) sessions")
+                    Metric(
+                        label: "Honoraires HT", value: Display.money(summary.gross, currency: currency),
+                        detail: summary.unconvertedEntries.isEmpty
+                            ? "Convertis en \(currency)" : "Total partiel · conversions en attente",
+                        warning: !summary.unconvertedEntries.isEmpty)
+                    Metric(
+                        label: "Net estimé", value: Display.money(summary.net, currency: currency),
+                        detail: "Après prélèvements", tint: Theme.positive)
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    CardHeader(title: "Par projet", subtitle: "\(rows.count) projets sur la période")
+                        .padding(.horizontal, 12).padding(.vertical, 12)
+                    ColumnHeader {
+                        Text("Projet").frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Temps").frame(width: 150, alignment: .trailing)
+                        Text("Brut HT").frame(width: 110, alignment: .trailing)
+                        Text("Net estimé").frame(width: 110, alignment: .trailing)
+                    }
+                    if rows.isEmpty {
+                        EmptyState(
+                            symbol: "chart.bar.xaxis", title: "Rien à rapporter",
+                            detail: "Aucune session sur cette période."
+                        )
+                        .frame(height: 220)
+                    }
+                    ForEach(rows) { row in
+                        ListRow(showsRule: row.id != rows.last?.id) {
+                            HStack(spacing: 12) {
+                                HStack(spacing: 10) {
+                                    Circle().fill(row.project.color.tint).frame(width: 8, height: 8)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(row.project.name).lineLimit(1)
+                                        Text(row.client).font(.subheadline).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                HStack(spacing: 10) {
+                                    ShareBar(
+                                        value: row.summary.seconds / max(1, summary.seconds),
+                                        tint: row.project.color.tint)
+                                    Text(Display.duration(row.summary.seconds)).monospacedDigit()
+                                        .frame(width: 60, alignment: .trailing)
+                                }
+                                .frame(width: 150, alignment: .trailing)
+                                amount(
+                                    row.summary.unconvertedEntries.isEmpty ? row.summary.gross : nil, currency: currency
+                                )
+                                .frame(width: 110, alignment: .trailing)
+                                amount(
+                                    row.summary.unconvertedEntries.isEmpty ? row.summary.net : nil, currency: currency
+                                )
+                                .foregroundStyle(Theme.positive)
+                                .frame(width: 110, alignment: .trailing)
+                            }
+                        }
                     }
                 }
-                TableColumn("Client") { row in Text(row.client).foregroundStyle(.secondary) }
-                TableColumn("Temps") { row in
-                    Text(Display.duration(row.summary.seconds)).monospacedDigit()
-
-                }
-                .width(min: 70, ideal: 90)
-                .alignment(.trailing)
-                TableColumn("Part") { row in
-                    Text(row.summary.seconds / max(1, summary.seconds), format: .percent.precision(.fractionLength(0)))
-                        .monospacedDigit().foregroundStyle(.secondary)
-
-                }
-                .width(min: 50, ideal: 60)
-                .alignment(.trailing)
-                TableColumn("Brut HT") { row in
-                    amount(row.summary.unconvertedEntries.isEmpty ? row.summary.gross : nil, currency: currency)
-                }
-                .width(min: 90, ideal: 110)
-                .alignment(.trailing)
-                TableColumn("Net estimé") { row in
-                    amount(row.summary.unconvertedEntries.isEmpty ? row.summary.net : nil, currency: currency)
-                }
-                .width(min: 90, ideal: 110)
-                .alignment(.trailing)
+                .card(padding: 0)
+                Text(
+                    "Montants du travail effectué sur la période, pas des paiements reçus. Tarifs et prélèvements sont figés dans chaque session."
+                )
+                .font(.footnote).foregroundStyle(.secondary)
             }
-            .overlay {
-                if rows.isEmpty {
-                    EmptyState(
-                        symbol: "chart.bar.xaxis", title: "Rien à rapporter",
-                        detail: "Aucune session sur cette période.")
-                }
-            }
-            Text(
-                "Montants du travail effectué sur la période, pas des paiements reçus. Tarifs et prélèvements sont figés dans chaque session."
-            )
-            .font(.footnote).foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Theme.gutter).padding(.vertical, 10)
+            .padding(Theme.gutter)
+            .frame(maxWidth: 1160).frame(maxWidth: .infinity)
         }
         .toolbar {
             PeriodToolbar(store: store)
@@ -104,10 +114,12 @@ struct ReportsView: View {
         }
     }
 
-    private func amount(_ value: Decimal?, currency: String) -> some View {
-        Text(value.map { Display.money($0, currency: currency) } ?? "En attente")
-            .monospacedDigit()
-            .foregroundStyle(value == nil ? .secondary : .primary)
+    @ViewBuilder private func amount(_ value: Decimal?, currency: String) -> some View {
+        if let value {
+            Text(Display.money(value, currency: currency)).monospacedDigit()
+        } else {
+            Badge(text: "En attente")
+        }
     }
     private func destination(type: UTType, name: String) -> URL? {
         let panel = NSSavePanel()

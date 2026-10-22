@@ -20,26 +20,30 @@ struct TimerComposer: View {
     }
 
     private var idle: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             TextField("Sur quoi travaillez-vous ?", text: $store.timerTitle)
-                .textFieldStyle(.roundedBorder)
+                .timeitField(large: true)
                 .onSubmit(store.toggleTimer)
                 .accessibilityLabel("Description de l’activité")
-            ProjectPicker(store: store).frame(maxWidth: 220)
+            ProjectMenu(store: store, selection: $store.timerProjectID, large: true).frame(width: 220)
             Button(action: store.toggleTimer) {
-                Label("Démarrer", systemImage: "play.fill")
+                HStack(spacing: 8) {
+                    Label("Démarrer", systemImage: "play.fill")
+                    KeyCap("↩", onInk: true)
+                }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(TimeitButtonStyle(kind: .primary, large: true))
             .disabled(store.nextTimerProject == nil)
-            .help("Démarrer le timer (↩)")
+            .help("Démarrer le timer")
         }
-        .controlSize(.large)
-        .card(padding: 14)
+        .card(padding: 12)
     }
 
     private func running(_ entry: TimeEntry) -> some View {
         let tint = store.workspace.project(entry.projectID)?.color.tint ?? Theme.accent
         return HStack(spacing: 14) {
+            Circle().fill(tint).frame(width: 8, height: 8)
+                .padding(4).background(tint.opacity(0.18), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
                 Button {
                     store.entryEditor = EntryEditorRequest(entry: entry)
@@ -47,41 +51,22 @@ struct TimerComposer: View {
                     Text(entry.displayTitle).font(.headline).lineLimit(1)
                 }
                 .buttonStyle(.plain).help("Modifier le timer actif")
-                Label {
-                    Text(store.workspace.label(forProject: entry.projectID))
-                } icon: {
-                    Image(systemName: "circle.fill").foregroundStyle(tint).imageScale(.small)
-                }
-                .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                Text(store.workspace.label(forProject: entry.projectID))
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 12)
             TimelineView(.periodic(from: entry.start, by: 1)) { context in
                 Text(Display.duration(entry.duration(at: context.date), seconds: true))
-                    .font(.system(.title, weight: .medium)).monospacedDigit()
+                    .font(.system(.title, weight: .semibold)).monospacedDigit()
             }
             Button(action: store.stop) {
                 Label("Arrêter", systemImage: "stop.fill")
             }
-            .controlSize(.large)
+            .buttonStyle(TimeitButtonStyle(kind: .outline, large: true))
             .help("Arrêter le timer (⌘↩)")
         }
-        .padding(14)
+        .padding(.horizontal, 16).padding(.vertical, 12)
         .liveLens(tint, radius: Theme.cardRadius)
-    }
-}
-
-/// The project the next timer starts on.
-struct ProjectPicker: View {
-    @Bindable var store: AppStore
-    var body: some View {
-        Picker("Projet", selection: $store.timerProjectID) {
-            ForEach(store.workspace.activeProjects) { project in
-                Text(project.name).tag(Optional(project.id))
-            }
-        }
-        .labelsHidden()
-        .tint(.primary)
-        .help("Projet du prochain timer")
     }
 }
 
@@ -149,34 +134,34 @@ struct MenuBarView: View {
     }
 
     private var timer: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             if let entry = store.running {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(store.workspace.label(forProject: entry.projectID)).font(.subheadline)
                         .foregroundStyle(.secondary)
                     TimelineView(.periodic(from: entry.start, by: 1)) { context in
                         Text(Display.duration(entry.duration(at: context.date), seconds: true))
-                            .font(.system(size: 34, weight: .medium)).monospacedDigit()
+                            .font(.system(size: 34, weight: .semibold)).monospacedDigit()
                     }
                     Text(entry.displayTitle).lineLimit(2)
                 }
                 Button(action: store.stop) {
                     Label("Arrêter", systemImage: "stop.fill").frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.outline)
             } else {
                 TextField("Sur quoi travaillez-vous ?", text: $store.timerTitle)
-                    .textFieldStyle(.roundedBorder)
+                    .timeitField()
                     .onSubmit(store.toggleTimer)
                     .accessibilityLabel("Description de l’activité")
-                ProjectPicker(store: store)
+                ProjectMenu(store: store, selection: $store.timerProjectID)
                 Button(action: store.toggleTimer) {
                     Label("Démarrer", systemImage: "play.fill").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primary)
                 .disabled(store.nextTimerProject == nil)
             }
         }
-        .controlSize(.large)
     }
 }
 

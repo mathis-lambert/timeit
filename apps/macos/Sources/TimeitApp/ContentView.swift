@@ -227,17 +227,31 @@ private struct Sidebar: View {
 private struct WelcomeView: View {
     let store: AppStore
     var body: some View {
-        ContentUnavailableView {
-            Label("Bienvenue dans Timeit", systemImage: "clock")
-        } description: {
-            Text(
-                "Créez un projet pour lancer votre premier timer. Vos données restent sur ce Mac ; la synchronisation est facultative."
-            )
-        } actions: {
-            Button("Créer un projet") { store.projectEditor = ProjectEditorRequest() }
-                .buttonStyle(.borderedProminent)
-            Button("Explorer un exemple") { store.enterDemo() }
+        VStack(spacing: 20) {
+            Image(systemName: "clock")
+                .font(.title).foregroundStyle(Theme.accent)
+                .frame(width: 56, height: 56)
+                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(spacing: 6) {
+                Text("Bienvenue dans Timeit").font(.title2.weight(.semibold))
+                Text(
+                    "Créez un projet pour lancer votre premier timer.\nVos données restent sur ce Mac ; la synchronisation est facultative."
+                )
+                .foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+            HStack(spacing: 8) {
+                Button("Explorer un exemple") { store.enterDemo() }
+                    .buttonStyle(TimeitButtonStyle(kind: .outline, large: true))
+                Button {
+                    store.projectEditor = ProjectEditorRequest()
+                } label: {
+                    Label("Créer un projet", systemImage: "plus")
+                }
+                .buttonStyle(TimeitButtonStyle(kind: .primary, large: true))
+            }
         }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -267,10 +281,10 @@ struct ConflictView: View {
                 "Votre Mac et le serveur ont été modifiés séparément. Choisissez la version à conserver. Une copie de l’autre version sera enregistrée localement avant le remplacement."
             ).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack {
-                Button("Conserver ce Mac") { store.resolveConflict(useLocal: true) }
+                Button("Conserver ce Mac") { store.resolveConflict(useLocal: true) }.buttonStyle(.outline)
                 Spacer()
                 Button("Utiliser le serveur") { store.resolveConflict(useLocal: false) }
-                    .keyboardShortcut(.defaultAction)
+                    .keyboardShortcut(.defaultAction).buttonStyle(.primary)
             }
         }.padding(28).frame(width: 480)
     }

@@ -1,87 +1,69 @@
 import SwiftUI
 import TimeitCore
 
-/// Projects as a native table: name, client, rate, this week and total; actions in the context menu.
+/// Projects grouped by client, each client a card holding a table: project, rate, this week, total.
 struct ProjectsView: View {
     @Bindable var store: AppStore
     @State private var showArchived = false
-    @State private var selection: Set<UUID> = []
     @State private var editingClient: Client?
-
-    private struct Row: Identifiable {
-        let project: Project
-        let client: Client?
-        let week: TimeInterval
-        let total: TimeInterval
-        var id: UUID { project.id }
-    }
 
     var body: some View {
         let weekSeconds = store.weekSecondsByProject
         let totals = Dictionary(grouping: store.workspace.entries, by: \.projectID).mapValues {
             $0.reduce(0) { $0 + $1.duration() }
         }
-        let rows = store.workspace.projects.filter { $0.archived == showArchived }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-            .map {
-                Row(
-                    project: $0, client: store.workspace.client(for: $0), week: weekSeconds[$0.id] ?? 0,
-                    total: totals[$0.id] ?? 0)
-            }
-        Table(rows, selection: $selection) {
-            TableColumn("Projet") { row in
-                Label {
-                    Text(row.project.name)
-                } icon: {
-                    Image(systemName: store.running?.projectID == row.id ? "record.circle" : "circle.fill")
-                        .foregroundStyle(row.project.color.tint).imageScale(.small)
+        let groups = store.workspace.clients.compactMap { client -> (Client, [Project])? in
+            let projects = store.workspace.projects.filter { $0.clientID == client.id && $0.archived == showArchived }
+                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            return projects.isEmpty ? nil : (client, projects)
+        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                if groups.isEmpty {
+                    EmptyState(
+                        symbol: showArchived ? "archivebox" : "folder",
+                        title: showArchived ? "Aucune archive" : "Aucun projet",
+                        detail: showArchived
+                            ? "Les projets archivés gardent leur historique dans les rapports."
+                            : "Créez un projet pour commencer à suivre votre temps.",
+                        action: showArchived ? nil : "Nouveau projet"
+                    ) { store.projectEditor = ProjectEditorRequest() }
+                    .frame(minHeight: 360)
+                }
+                ForEach(groups, id: \.0.id) { client, projects in
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 8) {
+                            Text(client.name).font(.headline)
+                            Badge(text: "\(projects.count)")
+                            Spacer()
+                            Menu {
+                                Button("Renommer le client…") { editingClient = client }
+                            } label: {
+                                Image(systemName: "ellipsis").frame(width: 26, height: 26).contentShape(Rectangle())
+                            }
+                            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                            .foregroundStyle(.secondary)
+                            .help("Actions du client")
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        ColumnHeader {
+                            Text("Projet").frame(maxWidth: .infinity, alignment: .leading)
+                            Text("Tarif").frame(width: 130, alignment: .leading)
+                            Text("Cette semaine").frame(width: 100, alignment: .trailing)
+                            Text("Total").frame(width: 80, alignment: .trailing)
+                            Color.clear.frame(width: 56)
+                        }
+                        ForEach(projects) { project in
+                            ProjectRow(
+                                store: store, project: project, week: weekSeconds[project.id] ?? 0,
+                                total: totals[project.id] ?? 0, isLast: project.id == projects.last?.id)
+                        }
+                    }
+                    .card(padding: 0)
                 }
             }
-            TableColumn("Client") { row in Text(row.client?.name ?? "").foregroundStyle(.secondary) }
-            TableColumn("Tarif") { row in
-                Text(
-                    row.project.billable
-                        ? "\(Display.money(.amount(row.project.hourlyRate), currency: row.project.currency)) / h"
-                        : "Non facturable"
-                )
-                .monospacedDigit().foregroundStyle(.secondary)
-            }
-            TableColumn("Cette semaine") { row in
-                Text(Display.duration(row.week)).monospacedDigit()
-            }
-            .width(min: 90, ideal: 110)
-            .alignment(.trailing)
-            TableColumn("Total") { row in
-                Text(Display.duration(row.total)).monospacedDigit().foregroundStyle(.secondary)
-
-            }
-            .width(min: 80, ideal: 100)
-            .alignment(.trailing)
-        }
-        .contextMenu(forSelectionType: UUID.self) { ids in
-            if let id = ids.first, let project = store.workspace.project(id) {
-                Button("Modifier…") { store.projectEditor = ProjectEditorRequest(project: project) }
-                if !project.archived { Button("Démarrer") { store.start(project: project) } }
-                if let client = store.workspace.client(for: project) {
-                    Button("Renommer « \(client.name) »…") { editingClient = client }
-                }
-                Divider()
-                Button(project.archived ? "Restaurer" : "Archiver") { store.archive(project) }
-            }
-        } primaryAction: { ids in
-            if let id = ids.first, let project = store.workspace.project(id) {
-                store.projectEditor = ProjectEditorRequest(project: project)
-            }
-        }
-        .overlay {
-            if rows.isEmpty {
-                EmptyState(
-                    symbol: showArchived ? "archivebox" : "folder",
-                    title: showArchived ? "Aucune archive" : "Aucun projet",
-                    detail: showArchived
-                        ? "Les projets archivés gardent leur historique dans les rapports."
-                        : "Créez un projet pour commencer à suivre votre temps.")
-            }
+            .padding(Theme.gutter)
+            .frame(maxWidth: 1160).frame(maxWidth: .infinity)
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -105,6 +87,57 @@ struct ProjectsView: View {
     }
 }
 
+private struct ProjectRow: View {
+    let store: AppStore
+    let project: Project
+    let week: TimeInterval
+    let total: TimeInterval
+    let isLast: Bool
+    var body: some View {
+        let live = store.running?.projectID == project.id
+        ListRow(highlighted: live ? project.color.tint : nil, showsRule: !isLast) {
+            HStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    Circle().fill(project.color.tint).frame(width: 8, height: 8)
+                    Text(project.name).lineLimit(1)
+                    if live { Badge(text: "En cours", tint: project.color.tint) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Group {
+                    if project.billable {
+                        Text("\(Display.money(.amount(project.hourlyRate), currency: project.currency)) / h")
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    } else {
+                        Badge(text: "Non facturable")
+                    }
+                }
+                .frame(width: 130, alignment: .leading)
+                Text(Display.duration(week)).monospacedDigit().frame(width: 100, alignment: .trailing)
+                Text(Display.duration(total)).monospacedDigit().foregroundStyle(.secondary)
+                    .frame(width: 80, alignment: .trailing)
+                HStack(spacing: 2) {
+                    if !project.archived {
+                        IconButton(symbol: "play.fill", label: "Démarrer \(project.name)") {
+                            store.start(project: project)
+                        }
+                    }
+                    IconButton(symbol: "pencil", label: "Modifier \(project.name)") {
+                        store.projectEditor = ProjectEditorRequest(project: project)
+                    }
+                }
+                .frame(width: 56, alignment: .trailing)
+            }
+        }
+        .onTapGesture(count: 2) { store.projectEditor = ProjectEditorRequest(project: project) }
+        .contextMenu {
+            Button("Modifier…") { store.projectEditor = ProjectEditorRequest(project: project) }
+            if !project.archived { Button("Démarrer") { store.start(project: project) } }
+            Divider()
+            Button(project.archived ? "Restaurer" : "Archiver") { store.archive(project) }
+        }
+    }
+}
+
 private struct ClientEditor: View {
     let store: AppStore
     let client: Client
@@ -118,10 +151,10 @@ private struct ClientEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             SheetHeader(title: "Renommer le client")
-            TextField("Nom du client", text: $name)
+            TextField("Nom du client", text: $name).timeitField()
             HStack {
                 Spacer()
-                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction).buttonStyle(.outline)
                 Button("Enregistrer") {
                     let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
                     if store.change({ document in
@@ -131,7 +164,7 @@ private struct ClientEditor: View {
                     }) {
                         dismiss()
                     }
-                }.keyboardShortcut(.defaultAction).disabled(
+                }.keyboardShortcut(.defaultAction).buttonStyle(.primary).disabled(
                     name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 150)
             }
         }.padding(20).frame(width: 360)
