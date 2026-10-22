@@ -210,7 +210,7 @@ struct MenuBarView: View {
             } else {
                 TextField("Sur quoi travaillez-vous ?", text: $store.timerTitle)
                     .textFieldStyle(.roundedBorder).controlSize(.large)
-                    .onSubmit { store.toggleTimer() }
+                    .onSubmit { if store.timerProjectID != nil { store.toggleTimer() } }
                     .accessibilityLabel("Description de l’activité")
                 ProjectChip(store: store)
             }

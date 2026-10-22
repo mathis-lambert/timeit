@@ -68,6 +68,7 @@ final class AppStore {
     private var connectionOwner: String?
     private var connectionGeneration = UUID()
     private var maintenanceTask: Task<Void, Never>?
+    private var ratesCheckedFor: RatesFingerprint?
 
     var workspace: Workspace { state.document }
     var calendar: Calendar { workspace.calendar }
@@ -437,6 +438,9 @@ final class AppStore {
         state = next
     }
     private func refreshRates(using client: APIClient, generation: UUID) async {
+        // Rescanning history is only needed after the document or the rate cache changed.
+        let fingerprint = RatesFingerprint(state)
+        guard fingerprint != ratesCheckedFor else { return }
         let fullPeriod = DateInterval(start: .distantPast, end: .now)
         var needed: [String: (String, String)] = [:]
         let present = Set(state.rates.map(\.key))
@@ -457,7 +461,19 @@ final class AppStore {
                 next.rates.append(rate)
                 try database?.save(next)
                 state = next
-            } catch { break }
+            } catch { return }
+        }
+        if needed.count <= 100 { ratesCheckedFor = RatesFingerprint(state) }
+    }
+    /// Identifies the inputs of a rate scan: synced document, local edits and cached rates.
+    private struct RatesFingerprint: Equatable {
+        let revision: Int
+        let localVersion: Int
+        let rateCount: Int
+        init(_ state: LocalState) {
+            revision = state.sync.revision
+            localVersion = state.sync.localVersion
+            rateCount = state.rates.count
         }
     }
     func resolveConflict(useLocal: Bool) {

@@ -5,6 +5,7 @@ import TimeitCore
 struct DashboardView: View {
     @Bindable var store: AppStore
     var body: some View {
+        let entries = store.visibleEntries
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 PageHeader(title: store.periodTitle, subtitle: store.periodSubtitle) {
@@ -13,19 +14,19 @@ struct DashboardView: View {
                 }
                 TimerComposer(store: store)
                 TimelineView(.periodic(from: .now, by: 30)) { context in
-                    let summary = store.summary(now: context.date)
+                    let summary = store.summary(entries: entries, now: context.date)
                     VStack(spacing: 20) {
                         MetricsRow(store: store, summary: summary)
                         HStack(alignment: .top, spacing: 16) {
-                            WeeklyActivity(store: store, now: context.date).card()
+                            WeeklyActivity(store: store, entries: entries, now: context.date).card()
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            Breakdown(store: store, summary: summary, now: context.date).card()
+                            Breakdown(store: store, entries: entries, summary: summary, now: context.date).card()
                                 .frame(width: 280).frame(maxHeight: .infinity)
                         }
                         .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                SessionsCard(store: store)
+                SessionsCard(store: store, entries: entries)
             }
             .padding(.horizontal, Theme.gutter).padding(.top, 12).padding(.bottom, 64)
             .frame(maxWidth: 1160)
@@ -41,7 +42,7 @@ private struct MetricsRow: View {
     let summary: FinancialSummary
     var body: some View {
         let currency = store.workspace.profile.currency
-        let goalSeconds = Double(store.workspace.profile.weeklyGoal) * 3600 * (store.period == .week ? 1 : 4.33)
+        let goalSeconds = Double(max(1, store.workspace.profile.weeklyGoal)) * 3600 * (store.period == .week ? 1 : 4.33)
         HStack(alignment: .top, spacing: 0) {
             Metric(
                 label: "Temps travaillé", value: Display.duration(summary.seconds),
@@ -112,6 +113,7 @@ extension Metric where Accessory == EmptyView {
 
 private struct Breakdown: View {
     let store: AppStore
+    let entries: [TimeEntry]
     let summary: FinancialSummary
     let now: Date
     private struct Slice: Identifiable {
@@ -121,7 +123,7 @@ private struct Breakdown: View {
     }
     var body: some View {
         let currency = store.workspace.profile.currency
-        let slices = Dictionary(grouping: store.visibleEntries, by: \.projectID)
+        let slices = Dictionary(grouping: entries, by: \.projectID)
             .compactMap { id, entries -> Slice? in
                 guard let project = store.workspace.project(id) else { return nil }
                 let seconds = store.trackedSeconds(entries, in: store.interval, now: now)
@@ -181,6 +183,7 @@ private struct Breakdown: View {
 
 struct WeeklyActivity: View {
     let store: AppStore
+    let entries: [TimeEntry]
     let now: Date
     @State private var selectedDay: Date?
     private struct Point: Identifiable {
@@ -190,7 +193,7 @@ struct WeeklyActivity: View {
         var id: String { "\(day.timeIntervalSince1970):\(project.id)" }
     }
     private var points: [Point] {
-        let byProject = Dictionary(grouping: store.visibleEntries, by: \.projectID)
+        let byProject = Dictionary(grouping: entries, by: \.projectID)
         var result: [Point] = []
         var day = store.interval.start
         while day < store.interval.end {
@@ -275,9 +278,9 @@ struct WeeklyActivity: View {
 // MARK: - Sessions
 
 private struct SessionsCard: View {
-    @Bindable var store: AppStore
+    let store: AppStore
+    let entries: [TimeEntry]
     var body: some View {
-        let entries = store.visibleEntries
         let byDay = Dictionary(grouping: entries) { store.calendar.startOfDay(for: $0.start) }
         let shown = Dictionary(grouping: entries.prefix(14)) { store.calendar.startOfDay(for: $0.start) }
             .sorted { $0.key > $1.key }

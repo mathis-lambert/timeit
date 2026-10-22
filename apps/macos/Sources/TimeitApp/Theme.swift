@@ -73,10 +73,7 @@ enum Display {
         return Decimal.amount(normalized).plainString
     }
     static func time(_ date: Date, calendar: Calendar) -> String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        formatter.timeZone = calendar.timeZone
-        return formatter.string(from: date)
+        date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: calendar.timeZone))
     }
 }
 

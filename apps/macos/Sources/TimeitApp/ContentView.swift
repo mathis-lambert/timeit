@@ -17,8 +17,9 @@ extension AppStore {
         return Dictionary(grouping: workspace.entries, by: \.projectID).mapValues { trackedSeconds($0, in: week) }
     }
     /// Share of the weekly goal reached this calendar week, for the brand ring.
-    var weekProgress: Double {
-        weekSecondsByProject.values.reduce(0, +) / Double(max(1, workspace.profile.weeklyGoal) * 3600)
+    var weekProgress: Double { goalProgress(weekSecondsByProject) }
+    func goalProgress(_ weekSeconds: [UUID: TimeInterval]) -> Double {
+        weekSeconds.values.reduce(0, +) / Double(max(1, workspace.profile.weeklyGoal) * 3600)
     }
 }
 
@@ -123,7 +124,7 @@ private struct Sidebar: View {
         let weekSeconds = store.weekSecondsByProject
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                BrandMark(size: 22, progress: store.weekProgress)
+                BrandMark(size: 22, progress: store.goalProgress(weekSeconds))
                 Wordmark(size: 21)
                 Spacer()
             }

@@ -7,9 +7,10 @@ import UniformTypeIdentifiers
 struct ReportsView: View {
     @Bindable var store: AppStore
     var body: some View {
-        let summary = store.summary()
+        let entries = store.visibleEntries
+        let summary = store.summary(entries: entries)
         let currency = store.workspace.profile.currency
-        let rows = Dictionary(grouping: store.visibleEntries, by: \.projectID)
+        let rows = Dictionary(grouping: entries, by: \.projectID)
             .compactMap { id, entries in store.workspace.project(id).map { ($0, store.summary(entries: entries)) } }
             .sorted { $0.1.seconds > $1.1.seconds }
         ScrollView {
@@ -21,7 +22,7 @@ struct ReportsView: View {
                 HStack(alignment: .top, spacing: 0) {
                     Metric(
                         label: "Temps travaillé", value: Display.duration(summary.seconds),
-                        detail: "\(store.visibleEntries.count) sessions")
+                        detail: "\(entries.count) sessions")
                     Divider().padding(.horizontal, 20)
                     Metric(
                         label: "Honoraires HT", value: Display.money(summary.gross, currency: currency),
