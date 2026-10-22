@@ -1,0 +1,42 @@
+{
+  "originHash" : "d4a359a75193953d7939fd50aa64a933adffa86048f4ec379d40103d3a5530ac",
+  "pins" : [
+    {
+      "identity" : "appauth-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/openid/AppAuth-iOS.git",
+      "state" : {
+        "revision" : "a972daac82d449d58ab119e91c68153e29ddac33",
+        "version" : "3.0.0"
+      }
+    },
+    {
+      "identity" : "grdb.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/groue/GRDB.swift.git",
+      "state" : {
+        "revision" : "b83108d10f42680d78f23fe4d4d80fc88dab3212",
+        "version" : "7.11.1"
+      }
+    },
+    {
+      "identity" : "keyboardshortcuts",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sindresorhus/KeyboardShortcuts.git",
+      "state" : {
+        "revision" : "772133d9dbe800fdac0473226822994c5c162c58",
+        "version" : "3.1.0"
+      }
+    },
+    {
+      "identity" : "valet",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/square/Valet.git",
+      "state" : {
+        "revision" : "43f517941ced37752c0cd5e2b53a3c9d021c848b",
+        "version" : "5.1.1"
+      }
+    }
+  ],
+  "version" : 3
+}

@@ -1,0 +1,267 @@
+import SwiftUI
+import TimeitCore
+
+struct CalendarView: View {
+    @Bindable var store: AppStore
+    @State private var dragged: UUID?
+    private let hourHeight: CGFloat = 60
+    private var draggedDay: Date? {
+        dragged.flatMap { id in store.workspace.entries.first { $0.id == id }?.start }
+    }
+    private var days: [Date] {
+        (0..<7).map { store.calendar.date(byAdding: .day, value: $0, to: store.calendarWeek.start)! }
+    }
+    var body: some View {
+        VStack(spacing: 14) {
+            PageHeader(title: store.periodTitle, subtitle: store.periodSubtitle) {
+                FilterChip(store: store)
+                PeriodControls(store: store, showPicker: false)
+            }
+            .padding(.horizontal, Theme.gutter).padding(.top, 12)
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: 58)
+                    ForEach(days, id: \.self) { day in dayHeader(day) }
+                }
+                .padding(.trailing, 12).padding(.vertical, 12)
+                .fixedSize(horizontal: false, vertical: true)
+                Divider()
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical) {
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            HStack(alignment: .top, spacing: 0) {
+                                VStack(spacing: 0) {
+                                    ForEach(0..<24, id: \.self) { hour in
+                                        Text(String(format: "%02d:00", hour))
+                                            .font(.system(size: 10)).monospacedDigit()
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 50, height: hourHeight, alignment: .topTrailing)
+                                            .padding(.trailing, 8).offset(y: -6)
+                                            .id("hour-\(hour)")
+                                    }
+                                }
+                                ForEach(days, id: \.self) { day in
+                                    DayColumn(
+                                        store: store, day: day, hourHeight: hourHeight, now: context.date,
+                                        dragged: $dragged
+                                    )
+                                    .zIndex(
+                                        draggedDay.map { store.calendar.isDate($0, inSameDayAs: day) } == true ? 1 : 0)
+                                }
+                            }
+                            .padding(.top, 10).padding(.trailing, 12)
+                        }
+                    }
+                    .onAppear { proxy.scrollTo("hour-8", anchor: .top) }
+                }
+                Divider()
+                HStack(spacing: 16) {
+                    hint("cursorarrow.click.2", "Double-clic pour ajouter")
+                    hint("hand.draw", "Glisser pour déplacer")
+                    hint("arrow.up.and.down", "Bord inférieur pour ajuster")
+                    Spacer()
+                    Text(store.calendar.timeZone.identifier)
+                }
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .padding(.horizontal, 18).padding(.vertical, 10)
+            }
+            .card(padding: 0)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+            .padding(.horizontal, Theme.gutter)
+            .padding(.bottom, store.isDemo ? 64 : 18)
+        }
+    }
+    private func hint(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+            Text(text)
+        }
+    }
+    private func dayHeader(_ day: Date) -> some View {
+        let today = store.calendar.isDateInToday(day)
+        let seconds = store.trackedSeconds(
+            store.workspace.entries.filter { store.projectFilter == nil || $0.projectID == store.projectFilter },
+            in: DateInterval(start: day, end: store.calendar.date(byAdding: .day, value: 1, to: day)!))
+        return VStack(spacing: 4) {
+            HStack(spacing: 6) {
+                Text(day.formatted(.dateTime.weekday(.abbreviated)))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(today ? Theme.accent : .secondary)
+                Text(day.formatted(.dateTime.day()))
+                    .font(.system(size: 14, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle(today ? .white : .primary)
+                    .frame(minWidth: 24, minHeight: 24)
+                    .background { if today { Circle().fill(Theme.accent) } }
+            }
+            Text(seconds > 0 ? Display.duration(seconds) : " ")
+                .font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct DayColumn: View {
+    let store: AppStore
+    let day: Date
+    let hourHeight: CGFloat
+    let now: Date
+    @Binding var dragged: UUID?
+    private var nextDay: Date { store.calendar.date(byAdding: .day, value: 1, to: day)! }
+    private var entries: [TimeEntry] {
+        store.workspace.entries.filter {
+            $0.start < nextDay && ($0.end ?? now) > day
+                && (store.projectFilter == nil || $0.projectID == store.projectFilter)
+        }
+    }
+    private var clipped: [TimeEntry] {
+        entries.map { entry in
+            var copy = entry
+            copy.start = max(entry.start, day)
+            copy.end = min(entry.end ?? now, nextDay)
+            return copy
+        }
+    }
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                Rectangle().fill(
+                    store.calendar.isDateInToday(day)
+                        ? Theme.accent.opacity(0.03)
+                        : store.calendar.isDateInWeekend(day) ? Color.primary.opacity(0.02) : .clear)
+                ForEach(0..<24, id: \.self) { hour in
+                    Rectangle().fill(Theme.hairline).frame(height: 0.5).offset(y: CGFloat(hour) * hourHeight)
+                }
+                Rectangle().fill(Theme.hairline).frame(width: 0.5)
+                Color.clear.contentShape(Rectangle()).onTapGesture(count: 2, coordinateSpace: .local) { point in
+                    let minute = min(1425, max(0, Int((point.y / hourHeight * 60 / 15).rounded()) * 15))
+                    guard let date = store.calendar.date(byAdding: .minute, value: minute, to: day), date < .now else {
+                        return
+                    }
+                    store.entryEditor = EntryEditorRequest(start: date)
+                }
+                ForEach(CalendarLayout.slots(for: clipped, now: now)) { slot in
+                    if let entry = entries.first(where: { $0.id == slot.id }) {
+                        let top = offset(max(entry.start, day))
+                        let bottom =
+                            min(entry.end ?? now, nextDay) >= nextDay ? 24 * hourHeight : offset(entry.end ?? now)
+                        let width = max(20, (geometry.size.width - 8) / CGFloat(slot.columns))
+                        CalendarEntry(
+                            store: store, entry: entry, hourHeight: hourHeight, dayWidth: geometry.size.width, now: now,
+                            dragged: $dragged
+                        )
+                        .zIndex(dragged == entry.id ? 1 : 0)
+                        .frame(width: width - 3, height: max(28, bottom - top - 3))
+                        .position(
+                            x: 5 + CGFloat(slot.column) * width + (width - 3) / 2,
+                            y: top + max(28, bottom - top - 3) / 2)
+                    }
+                }
+                if store.calendar.isDateInToday(day) {
+                    HStack(spacing: 0) {
+                        Circle().fill(Theme.accent).frame(width: 7, height: 7).offset(x: -3.5)
+                        Rectangle().fill(Theme.accent).frame(height: 1)
+                    }
+                    .offset(y: offset(now) - 3.5).allowsHitTesting(false)
+                }
+            }.frame(height: 24 * hourHeight)
+        }.frame(height: 24 * hourHeight)
+    }
+    private func offset(_ date: Date) -> CGFloat {
+        let components = store.calendar.dateComponents([.hour, .minute], from: date)
+        return (CGFloat(components.hour ?? 0) + CGFloat(components.minute ?? 0) / 60) * hourHeight
+    }
+}
+
+private struct CalendarEntry: View {
+    let store: AppStore
+    let entry: TimeEntry
+    let hourHeight: CGFloat
+    let dayWidth: CGFloat
+    let now: Date
+    @Binding var dragged: UUID?
+    @State private var translation: CGSize = .zero
+    @State private var resize: CGFloat = 0
+    @State private var hovered = false
+    private var project: Project? { store.workspace.project(entry.projectID) }
+    var body: some View {
+        let tint = project?.color.tint ?? Theme.accent
+        let dragging = translation != .zero || resize != 0
+        GeometryReader { geometry in
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.title.isEmpty ? project?.name ?? "Session" : entry.title)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .lineLimit(geometry.size.height > 70 ? 3 : 1)
+                if geometry.size.height > 46 {
+                    Text(project?.name ?? "").font(.system(size: 10.5)).lineLimit(1).foregroundStyle(.secondary)
+                }
+                if geometry.size.height > 72 {
+                    Text(entry.end == nil ? "En cours" : Display.duration(entry.duration(at: now)))
+                        .font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 7).padding(.vertical, 5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(
+                tint.opacity(hovered || dragging ? 0.26 : 0.17),
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+            .overlay(alignment: .bottom) {
+                if entry.end != nil {
+                    Color.clear.frame(height: 8).contentShape(Rectangle())
+                        .pointerStyle(.frameResize(position: .bottom))
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 3)
+                                .onChanged {
+                                    dragged = entry.id
+                                    resize = $0.translation.height
+                                }
+                                .onEnded { value in
+                                    store.move(
+                                        entry, by: Int((value.translation.height / hourHeight * 4).rounded()) * 15,
+                                        resizing: true)
+                                    resize = 0
+                                    dragged = nil
+                                })
+                }
+            }
+            .frame(height: max(28, geometry.size.height + resize), alignment: .top)
+            .opacity(dragging ? 0.9 : 1)
+            .offset(translation)
+            .gesture(
+                DragGesture(minimumDistance: 5)
+                    .onChanged {
+                        guard entry.end != nil else { return }
+                        dragged = entry.id
+                        translation = $0.translation
+                    }
+                    .onEnded { value in
+                        if entry.end != nil {
+                            let minutes = Int((value.translation.height / hourHeight * 4).rounded()) * 15
+                            let days = Int((value.translation.width / dayWidth).rounded())
+                            store.move(entry, by: minutes, days: days)
+                        }
+                        translation = .zero
+                        dragged = nil
+                    }
+            )
+            .onTapGesture { store.entryEditor = EntryEditorRequest(entry: entry) }
+            .onHover { hovered = $0 }
+            .contextMenu {
+                Button("Modifier…", systemImage: "pencil") { store.entryEditor = EntryEditorRequest(entry: entry) }
+                Button("Reprendre", systemImage: "play") { store.resume(entry) }.disabled(project?.archived ?? true)
+                Divider()
+                Button("Supprimer", systemImage: "trash", role: .destructive) { store.delete(entry) }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                "\(entry.title), \(project?.name ?? ""), \(Display.duration(entry.duration(at: now)))"
+            )
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { store.entryEditor = EntryEditorRequest(entry: entry) }
+            .help(
+                "\(entry.title)\n\(Display.time(entry.start, calendar: store.calendar)) – \(entry.end.map { Display.time($0, calendar: store.calendar) } ?? "en cours")\nCliquer pour modifier"
+            )
+        }
+    }
+}

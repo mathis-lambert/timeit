@@ -1,0 +1,32 @@
+name: Checks
+on: [push, pull_request]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_USER: timeit
+          POSTGRES_PASSWORD: timeit
+          POSTGRES_DB: timeit
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U timeit" --health-interval 3s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://timeit:timeit@127.0.0.1:5432/timeit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+  macos:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift test --package-path apps/macos

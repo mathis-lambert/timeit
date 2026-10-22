@@ -1,0 +1,29 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Local app bundle, generated icon set and render output (scripts/build-macos.sh, preview tests)
+artifacts/
+
+# Environment: keep only the documented example
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors and OS
+.DS_Store
+.vscode/
+.idea/
+
+# Agent-local settings
+.claude/settings.local.json

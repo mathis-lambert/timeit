@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: timeit
+      POSTGRES_PASSWORD: timeit
+      POSTGRES_DB: timeit
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U timeit"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+volumes:
+  postgres-data:

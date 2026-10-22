@@ -1,0 +1,14 @@
+{
+  "name": "timeit",
+  "private": true,
+  "workspaces": ["backend"],
+  "scripts": {
+    "dev": "npm run dev -w backend",
+    "build": "npm run build -w backend",
+    "test": "npm run test -w backend",
+    "check": "npm run check -w backend",
+    "macos:build": "bash scripts/build-macos.sh",
+    "macos:test": "swift test --package-path apps/macos"
+  },
+  "engines": { "node": ">=24" }
+}
