@@ -20,7 +20,7 @@ Not covered by automation: calendar drawing, drag, resize and their previews; ke
 ## Boundaries
 
 - Google and Apple sign-in have not been exercised. The production API is deployed with cloud routes disabled (501).
-- Local bundles are ad-hoc signed, not notarized.
+- Local development bundles are ad-hoc signed. Published releases use notarized Developer ID signatures.
 - The deployment target is macOS 26; the app has only been run on macOS 27.
 
 ## Channel and cloud availability checks (2026-11-01)
@@ -28,7 +28,7 @@ Not covered by automation: calendar drawing, drag, resize and their previews; ke
 - Update tests cover native channel eligibility, subscription persistence across release metadata changes, unchanged workspace data, and disabled/invalid updater configuration. Local builds never start Sparkle.
 - Store tests call connection restoration, connection and synchronization while cloud is unavailable. Backend tests exercise every cloud route and multiple HTTP methods without PostgreSQL, expecting 501, and reject enabling cloud in production.
 - Live-window previews include Stable and Nightly update settings.
-- Still required before distributing: Developer ID signing, notarization, a single signed multi-channel appcast, globally increasing build numbers, and real update/restart tests between two signed builds. Changing a channel must never force an older build or discard a running timer.
+- Distribution now uses Developer ID signing, notarization, a single signed multi-channel appcast and globally increasing build numbers. Real update/restart tests between two signed builds remain required. Changing a channel must never force an older build or discard a running timer.
 
 ## Distribution pipeline checks (2026-11-01)
 
@@ -40,5 +40,9 @@ Not covered by automation: calendar drawing, drag, resize and their previews; ke
   are not public releases and are only ad-hoc signed.
 - Publisher tests cover preserved channels, stale builds, conflicting duplicate
   builds, atomic writes and idempotent retries. Workflow syntax is linted.
-- Apple signing/notarization and a real Sparkle install/relaunch remain pending
-  credential configuration and the first signed releases. See `RELEASES.md`.
+- `v0.1.0-beta.1` (build 3) is published. Apple accepted both the app and DMG.
+  Downloaded GitHub assets passed SHA-256, nested signature verification, stapled
+  ticket validation and Gatekeeper (`Notarized Developer ID`). The public appcast
+  signature verified successfully with the Timeit key.
+- A real Sparkle update/relaunch between two signed builds remains to be exercised
+  in a disposable macOS account. See `RELEASES.md`.
