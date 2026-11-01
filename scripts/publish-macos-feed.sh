@@ -42,9 +42,9 @@ assert int(sys.argv[3]) in publisher.entries(incoming), 'Release build missing f
 PY
 TARGET="$DEPLOY_USER@$DEPLOY_HOST"
 DESTINATION=/opt/mathislambert.fr/applications/timeit
-scp -P "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$ROOT/deploy/publish-appcast.py" "$TARGET:$DESTINATION/publish-appcast.py"
+printf -v publisher '%q' "$(cat "$ROOT/deploy/publish-appcast.py")"
 ssh -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" \
-  "python3 $DESTINATION/publish-appcast.py" < "$WORK/feed/appcast.xml"
+  "python3 -c $publisher '$DESTINATION/updates'" < "$WORK/feed/appcast.xml"
 curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 \
   https://timeit.mathislambert.fr/updates/appcast.xml -o "$WORK/published.xml"
 cmp "$WORK/feed/appcast.xml" "$WORK/published.xml"

@@ -47,8 +47,15 @@ public struct APIClient: Sendable {
             URLQueryItem(name: "date", value: date),
         ]
         var request = URLRequest(url: parts.url!)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        return try await perform(request)
+        request.timeoutInterval = 15
+        // Public market data never carries the workspace's authentication token.
+        let rate: ExchangeRate = try await perform(request)
+        guard rate.base == base, rate.quote == quote, rate.requestedDate == date,
+            rate.observedDate.count == 10, rate.observedDate <= date,
+            let value = Decimal(string: rate.rate, locale: Locale(identifier: "en_US_POSIX")),
+            !value.isNaN, value > 0
+        else { throw APIError.invalidResponse }
+        return rate
     }
     private func get<T: Decodable & Sendable>(_ path: String) async throws -> T { try await perform(request(path)) }
     private func request(_ path: String) -> URLRequest {

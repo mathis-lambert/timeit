@@ -46,3 +46,18 @@ Not covered by automation: calendar drawing, drag, resize and their previews; ke
   signature verified successfully with the Timeit key.
 - A real Sparkle update/relaunch between two signed builds remains to be exercised
   in a disposable macOS account. See `RELEASES.md`.
+
+## Public exchange rates (2026-11-01)
+
+- Backend fixtures cover anonymous access without PostgreSQL, observed dates for
+  weekends, cache reuse, invalid provider data, concurrent deduplication and bounded
+  provider concurrency. Cloud routes still return 501.
+- Store tests cover persisted offline rates, unchanged workspace/sync metadata,
+  partial failures and retries, late responses after entering demo, and progress
+  past an unavailable page in a long history.
+- The real Swift HTTP client is tested against the production-configured Fastify
+  app with a fixture provider; the server rejects any Authorization header.
+- Live-window captures include the incomplete-total notice. Both window tests,
+  including the render-cost ceiling, passed. No real user workspace was opened.
+- The appcast publisher was executed from shell-quoted source with the signed feed
+  streamed on stdin; the resulting bytes matched exactly, without a deployed script.

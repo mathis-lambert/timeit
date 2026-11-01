@@ -339,3 +339,31 @@ struct ShareBar: View {
             .accessibilityHidden(true)
     }
 }
+
+/// Explains excluded foreign amounts without presenting a partial total as a complete one.
+struct ExchangeRateNotice: View {
+    let store: AppStore
+    let missingCount: Int
+
+    var body: some View {
+        if missingCount > 0 {
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Total incomplet").font(.headline)
+                    Text(
+                        missingCount == 1
+                            ? "Une session sans taux de change est exclue des montants."
+                            : "\(missingCount) sessions sans taux de change sont exclues des montants."
+                    ).font(.subheadline).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(store.isRefreshingRates ? "Récupération des taux…" : "Réessayer") {
+                    Task { await store.refreshRates() }
+                }
+                .buttonStyle(TimeitButtonStyle(kind: .outline))
+                .disabled(store.isRefreshingRates || store.isDemo)
+            }.card()
+        }
+    }
+}

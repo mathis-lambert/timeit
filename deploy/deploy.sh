@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+cd /opt/mathislambert.fr/applications/timeit
 api_image="${1:?Missing API image digest}"
 releases_image="${2:?Missing releases image digest}"
 registry_user="${3:?Missing registry user}"
@@ -28,3 +28,6 @@ if ! "${compose[@]}" up -d --wait --wait-timeout 120; then
 fi
 install -m 644 "$work/release.env" .env.next
 mv .env.next .env
+
+# Retire helper files from the initial deployment; CI now executes these over SSH.
+rm -f deploy.sh publish-appcast.py

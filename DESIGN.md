@@ -69,3 +69,11 @@ Light and dark through semantic colors. Color always sits next to text. Icon-onl
 Keep Settings native, precise and calm: system text styles, grouped forms, semantic labels and no extra decorative surfaces. Cloud shows “Pas encore disponible” with local-backup guidance; it offers no connection action. Updates has one native channel picker, a short explanation and the same check action as the app menu. Stable, Beta and Nightly share one app and one workspace. Explain that returning to Stable waits for a newer stable version. Disable channel changes during an update session. Unavailable local builds explain why checking is disabled.
 
 2026-11-01 review: existing native hierarchy and typography retained; selected, disabled and unavailable states have explicit text, no color-only meanings or added animation. Live-window captures cover Stable and Nightly settings.
+
+## Missing exchange rates
+
+Gross and net metrics explicitly say “Total incomplet” when sessions lack rates;
+a completely missing amount is a dash, not zero. A shared notice below the metrics
+explains the excluded session count and offers an outline “Réessayer” button.
+During retrieval the button says “Récupération des taux…” and is disabled.
+No spinner or looping animation; existing system text styles and card tokens apply.

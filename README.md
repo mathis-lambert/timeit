@@ -63,7 +63,7 @@ cp backend/.env.example backend/.env
 npm run dev
 ```
 
-The API listens on `http://127.0.0.1:4318`. By default `/v1/*` returns `501 Not implemented yet`; no database is opened. For backend development only, set `CLOUD_ENABLED=true` in `backend/.env` to exercise the unreleased routes. The local development identity is refused outside loopback or in production. The Mac app keeps Cloud unavailable and never connects. The Compose credentials are for local development only.
+The API listens on `http://127.0.0.1:4318`. GET `/v1/exchange-rate` is public and works without a database. Other `/v1/*` routes return `501 Not implemented yet` by default. For backend development only, set `CLOUD_ENABLED=true` in `backend/.env` to exercise the unreleased routes. The local development identity is refused outside loopback or in production. The Mac app keeps Cloud unavailable; it only performs anonymous rate lookups and caches them locally. The Compose credentials are for local development only.
 
 ## Updates and hosting
 

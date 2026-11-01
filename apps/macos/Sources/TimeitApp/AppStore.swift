@@ -71,7 +71,14 @@ final class AppStore {
     private var connectionOwner: String?
     private var connectionGeneration = UUID()
     private var maintenanceTask: Task<Void, Never>?
-    private var ratesCheckedFor: RatesFingerprint?
+    var isRefreshingRates = false
+    private var ratesGeneration = UUID()
+    private var lastRateKey = ""
+    private let fetchRate: @Sendable (String, String, String) async throws -> ExchangeRate
+
+    var rateRefreshID: String {
+        "\(connectionGeneration):\(state.sync.revision):\(state.sync.localVersion):\(isDemo)"
+    }
 
     var workspace: Workspace { state.document }
     var calendar: Calendar { workspace.calendar }
@@ -108,7 +115,14 @@ final class AppStore {
         return result
     }
 
-    init(database suppliedDatabase: LocalDatabase? = nil, demo: Bool = false) {
+    init(
+        database suppliedDatabase: LocalDatabase? = nil, demo: Bool = false,
+        fetchRate: @escaping @Sendable (String, String, String) async throws -> ExchangeRate = { base, quote, day in
+            try await APIClient(baseURL: URL(string: "https://api.timeit.mathislambert.fr")!)
+                .rate(base: base, quote: quote, date: day)
+        }
+    ) {
+        self.fetchRate = fetchRate
         do {
             let db = try suppliedDatabase ?? LocalDatabase(path: Self.defaultDatabasePath())
             database = db
@@ -287,6 +301,8 @@ final class AppStore {
     func enterDemo() {
         do {
             invalidateSync()
+            ratesGeneration = UUID()
+            isRefreshingRates = false
             let demo = try LocalDatabase()
             let data = DemoData.make()
             try demo.save(data)
@@ -434,7 +450,6 @@ final class AppStore {
             }
             guard generation == connectionGeneration else { return }
             syncLabel = state.sync.hasChanges ? "Modifications en attente" : "À jour"
-            await refreshRates(using: client, generation: generation)
             if state.sync.hasChanges { scheduleSync() }
         } catch APIError.conflict {
             guard generation == connectionGeneration else { return }
@@ -464,10 +479,22 @@ final class AppStore {
         try database.saveSync(next.sync)
         state = next
     }
-    private func refreshRates(using client: APIClient, generation: UUID) async {
-        // Rescanning history is only needed after the document or the rate cache changed.
-        let fingerprint = RatesFingerprint(state)
-        guard fingerprint != ratesCheckedFor, let database else { return }
+    /// The app lifecycle owns this task. Edits restart it; the periodic pass covers midnight and reconnects.
+    func maintainExchangeRates() async {
+        guard !isDemo else { return }
+        while !Task.isCancelled {
+            await refreshRates()
+            do { try await Task.sleep(for: .seconds(300)) } catch { return }
+        }
+    }
+
+    func refreshRates() async {
+        guard !isDemo, let database, !Task.isCancelled else { return }
+        let generation = UUID()
+        ratesGeneration = generation
+        let workspaceGeneration = connectionGeneration
+        isRefreshingRates = true
+        defer { if ratesGeneration == generation { isRefreshingRates = false } }
         let currency = workspace.profile.currency
         let fullPeriod = DateInterval(start: .distantPast, end: .now)
         let present = Set(state.rates.map(\.key))
@@ -480,40 +507,25 @@ final class AppStore {
                 }
             }
         }
-        // Bounded sequential requests keep first sync gentle on the provider; results are saved once.
-        var fetched: [ExchangeRate] = []
-        var complete = needed.count <= 100
-        for (_, pair) in needed.sorted(by: { $0.key < $1.key }).prefix(100) {
-            guard let rate = try? await client.rate(base: pair.base, quote: currency, date: pair.day) else {
-                complete = false
-                break
-            }
-            fetched.append(rate)
-        }
-        guard generation == connectionGeneration else { return }
-        if !fetched.isEmpty {
-            var next = state
-            let keys = Set(fetched.map(\.key))
-            next.rates.removeAll { keys.contains($0.key) }
-            next.rates.append(contentsOf: fetched)
+        // Rotate bounded passes so unavailable pairs cannot starve the rest of a large history.
+        let ordered = needed.sorted(by: { $0.key < $1.key })
+        let pending = ordered.filter { $0.key > lastRateKey } + ordered.filter { $0.key <= lastRateKey }
+        for (key, pair) in pending.prefix(100) {
+            guard !Task.isCancelled, !isDemo, generation == ratesGeneration,
+                workspaceGeneration == connectionGeneration
+            else { return }
+            lastRateKey = key
             do {
-                try database.saveRates(fetched)
-                state = next
+                let rate = try await fetchRate(pair.base, currency, pair.day)
+                guard !Task.isCancelled, !isDemo, generation == ratesGeneration,
+                    workspaceGeneration == connectionGeneration
+                else { return }
+                try database.saveRates([rate])
+                state.rates.append(rate)
             } catch {
-                return
+                // Missing rates stay visible as incomplete totals. Other currencies can still succeed.
+                if Task.isCancelled { return }
             }
-        }
-        if complete { ratesCheckedFor = RatesFingerprint(state) }
-    }
-    /// Identifies the inputs of a rate scan: synced document, local edits and cached rates.
-    private struct RatesFingerprint: Equatable {
-        let revision: Int
-        let localVersion: Int
-        let rateCount: Int
-        init(_ state: LocalState) {
-            revision = state.sync.revision
-            localVersion = state.sync.localVersion
-            rateCount = state.rates.count
         }
     }
     func resolveConflict(useLocal: Bool) {

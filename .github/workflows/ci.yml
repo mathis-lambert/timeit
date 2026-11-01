@@ -40,6 +40,12 @@ jobs:
       - run: swift --version
       - run: swift format lint --recursive apps/macos/Sources apps/macos/Tests apps/macos/Package.swift scripts/make-icon.swift
       - run: swift test --package-path apps/macos
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:public-native -w backend
   publish:
     needs: [backend, macos]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -118,12 +124,16 @@ jobs:
           port="${DEPLOY_PORT:-22}"
           target="$DEPLOY_USER@$DEPLOY_HOST"
           destination=/opt/mathislambert.fr/applications/timeit
-          scp -P "$port" -o BatchMode=yes -o StrictHostKeyChecking=yes deploy/compose.prod.yaml deploy/deploy.sh "$target:$destination/"
+          scp -P "$port" -o BatchMode=yes -o StrictHostKeyChecking=yes deploy/compose.prod.yaml "$target:$destination/"
+          printf -v deploy_script '%q' "$(cat deploy/deploy.sh)"
           printf '%s\n' "$GHCR_TOKEN" | ssh -p "$port" -o BatchMode=yes -o StrictHostKeyChecking=yes "$target" \
-            "bash $destination/deploy.sh '$API_IMAGE' '$RELEASES_IMAGE' '$GITHUB_ACTOR'"
+            "bash -c $deploy_script -- '$API_IMAGE' '$RELEASES_IMAGE' '$GITHUB_ACTOR'"
       - name: Check public endpoints
         run: |
           curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 https://api.timeit.mathislambert.fr/health | jq -e '.status == "ok" and .cloudAvailable == false'
           test "$(curl --silent --show-error -o /tmp/cloud.json -w '%{http_code}' https://api.timeit.mathislambert.fr/v1/workspace)" = 501
           jq -e '.code == "CLOUD_NOT_AVAILABLE"' /tmp/cloud.json
           curl --fail --silent --show-error https://timeit.mathislambert.fr/healthz
+          curl --fail --silent --show-error --retry 4 --retry-all-errors --retry-delay 3 \
+            'https://api.timeit.mathislambert.fr/v1/exchange-rate?base=USD&quote=EUR&date=2026-10-16' | \
+            jq -e '.base == "USD" and .quote == "EUR" and .requestedDate == "2026-10-16" and (.rate | tonumber) > 0'

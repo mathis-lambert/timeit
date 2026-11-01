@@ -34,14 +34,20 @@ struct ReportsView: View {
                         label: "Temps travaillé", value: Display.duration(summary.seconds),
                         detail: "\(entries.count) sessions")
                     Metric(
-                        label: "Honoraires HT", value: Display.money(summary.gross, currency: currency),
+                        label: "Honoraires HT",
+                        value: !summary.unconvertedEntries.isEmpty && summary.gross == 0
+                            ? "—" : Display.money(summary.gross, currency: currency),
                         detail: summary.unconvertedEntries.isEmpty
-                            ? "Convertis en \(currency)" : "Total partiel · conversions en attente",
+                            ? "Convertis en \(currency)" : "Total incomplet · taux manquants",
                         warning: !summary.unconvertedEntries.isEmpty)
                     Metric(
-                        label: "Net estimé", value: Display.money(summary.net, currency: currency),
-                        detail: "Après prélèvements", tint: Theme.positive)
+                        label: "Net estimé",
+                        value: !summary.unconvertedEntries.isEmpty && summary.gross == 0
+                            ? "—" : Display.money(summary.net, currency: currency),
+                        detail: summary.unconvertedEntries.isEmpty ? "Après prélèvements" : "Total incomplet",
+                        warning: !summary.unconvertedEntries.isEmpty, tint: Theme.positive)
                 }
+                ExchangeRateNotice(store: store, missingCount: summary.unconvertedEntries.count)
                 VStack(alignment: .leading, spacing: 0) {
                     CardHeader(title: "Par projet", subtitle: "\(rows.count) projets sur la période")
                         .padding(.horizontal, 12).padding(.vertical, 12)

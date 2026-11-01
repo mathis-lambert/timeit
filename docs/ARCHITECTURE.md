@@ -2,7 +2,7 @@
 
 ## Boundaries
 
-The shipped app is currently local-only. Cloud connection, synchronization and cloud backups are unavailable: Settings says so, no connection is restored and no background sync starts. The future endpoint is `https://api.timeit.mathislambert.fr`. The deployed API returns HTTP 501 with `CLOUD_NOT_AVAILABLE` on `/v1/*`; `/health` reports availability without connecting to PostgreSQL. `CLOUD_ENABLED=true` is permitted only for local backend development/tests and rejected in production. The contracts below describe the existing, unreleased cloud implementation.
+Workspace data stays local; anonymous exchange-rate lookups are available independently of cloud. Cloud connection, synchronization and cloud backups are unavailable: Settings says so, no connection is restored and no background sync starts. The API endpoint is `https://api.timeit.mathislambert.fr`. The deployed API serves public GET `/v1/exchange-rate` and returns HTTP 501 with `CLOUD_NOT_AVAILABLE` on the other `/v1/*` routes; `/health` reports availability without connecting to PostgreSQL. `CLOUD_ENABLED=true` is permitted only for local backend development/tests and rejected in production. The contracts below describe the existing, unreleased cloud implementation.
 
 The Mac owns immediate interaction and local persistence. `TimeitCore` contains portable models, deterministic calculations and the HTTP contract. `TimeitApp` owns platform services and observable UI state. The API owns authenticated access, shared persistence, optimistic concurrency and historical exchange-rate observations. PostgreSQL never accepts a user identity from request bodies; ownership comes from the verified token.
 
@@ -56,9 +56,13 @@ The editable calendar lays events out by local wall-clock time and is optimized 
 
 ## Exchange rates
 
-GET `/v1/exchange-rate?base=USD&quote=EUR&date=YYYY-MM-DD` requires authentication. It calls a fixed Frankfurter URL with a timeout, verifies the pair/date/positive rate, and stores the first accepted observation. Store both requested date and provider date, preserving weekends/holidays. Historical cache values do not silently change after a provider correction. No provider secret or client business data is sent to Frankfurter.
+GET `/v1/exchange-rate?base=USD&quote=EUR&date=YYYY-MM-DD` is public. The client sends only the pair and requested day, never an authentication token, project, amount or workspace. The existing service calls a fixed Frankfurter v2 URL with an eight-second timeout and validates the pair, calendar date and positive rate. Requested and observed dates stay separate, preserving weekend/holiday observations.
 
-The client fetches missing rates after sync, at most 100 per pass, without blocking local recording. Rate access requires the backend connection. Foreign sessions work offline, but their converted totals remain partial until rates arrive.
+With cloud disabled, no PostgreSQL or identity provider is opened. The API keeps at most 2,048 observations in memory, deduplicates concurrent lookups and allows at most 16 outstanding provider requests. Capacity exhaustion returns 503 with Retry-After; unavailable or invalid provider data returns 502, never a fabricated rate. The server cache is disposable. The app persists its first accepted observation for each pair/day in the existing SQLite rate table, so cached calculations remain available offline and unchanged across server restarts. The unreleased cloud mode retains its existing PostgreSQL observation cache.
+
+The app fetches missing rates on opening its window, after workspace edits or a currency change, when returning to the foreground, and every five minutes while the window is alive. Each pass requests at most 100 missing pair/days sequentially. Successful observations are persisted immediately without changing the workspace or sync metadata. Example workspaces never request rates; cancellation and workspace generations reject late responses. Unsupported pairs do not stop other currencies from resolving.
+
+Until a required rate arrives, the dashboard and reports mark gross and net totals as incomplete, explain how many sessions are excluded, and offer Retry. A missing total is displayed as a dash instead of a misleading zero. Original currencies, amounts and durations are preserved.
 
 ## Identity and operations
 

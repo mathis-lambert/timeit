@@ -14,6 +14,7 @@ struct DashboardView: View {
                     let summary = store.summary(entries: entries, now: context.date)
                     VStack(spacing: 20) {
                         MetricsRow(store: store, summary: summary)
+                        ExchangeRateNotice(store: store, missingCount: summary.unconvertedEntries.count)
                         HStack(alignment: .top, spacing: 16) {
                             WeeklyActivity(store: store, entries: entries, now: context.date).card()
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -47,14 +48,19 @@ private struct MetricsRow: View {
                 detail: "\(Display.duration(summary.billableSeconds)) facturables",
                 progress: summary.seconds / goalSeconds)
             Metric(
-                label: "Honoraires bruts", value: Display.money(summary.gross, currency: currency),
+                label: "Honoraires bruts",
+                value: !summary.unconvertedEntries.isEmpty && summary.gross == 0
+                    ? "—" : Display.money(summary.gross, currency: currency),
                 detail: summary.unconvertedEntries.isEmpty
                     ? "Travail facturable · HT"
-                    : "\(summary.unconvertedEntries.count) conversion(s) en attente",
+                    : "Total incomplet · taux manquants",
                 warning: !summary.unconvertedEntries.isEmpty)
             Metric(
-                label: "Net estimé", value: Display.money(summary.net, currency: currency),
-                detail: "Après cotisations et impôts", tint: Theme.positive)
+                label: "Net estimé",
+                value: !summary.unconvertedEntries.isEmpty && summary.gross == 0
+                    ? "—" : Display.money(summary.net, currency: currency),
+                detail: summary.unconvertedEntries.isEmpty ? "Après cotisations et impôts" : "Total incomplet",
+                warning: !summary.unconvertedEntries.isEmpty, tint: Theme.positive)
         }
     }
 }

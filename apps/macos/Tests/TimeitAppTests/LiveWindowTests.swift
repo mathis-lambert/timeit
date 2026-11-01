@@ -50,6 +50,12 @@ struct LiveWindowTests {
             UpdateSettingsView(updater: updater), name: "updates-nightly", size: NSSize(width: 570, height: 470))
         try await render(ContentView(store: store), name: "dashboard-dark", size: windowSize)
         try await render(ContentView(store: store), name: "dashboard-light", size: windowSize, appearance: .aqua)
+        let missingDatabase = try LocalDatabase()
+        var missingState = DemoData.make()
+        missingState.rates = []
+        try missingDatabase.save(missingState)
+        let missingStore = AppStore(database: missingDatabase, fetchRate: { _, _, _ in throw APIError.server(502) })
+        try await render(ContentView(store: missingStore), name: "missing-exchange-rates", size: windowSize)
         store.screen = .calendar
         try await render(ContentView(store: store), name: "calendar", size: windowSize)
         store.screen = .projects

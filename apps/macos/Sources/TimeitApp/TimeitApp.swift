@@ -9,6 +9,7 @@ extension KeyboardShortcuts.Name {
 
 @main
 struct TimeitApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var store: AppStore
     @State private var updater = AppUpdater()
@@ -23,6 +24,10 @@ struct TimeitApp: App {
             ContentView(store: store)
                 .tint(Theme.accent)
                 .task { updater.start() }
+                .task(id: store.rateRefreshID) { await store.maintainExchangeRates() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { Task { await store.refreshRates() } }
+                }
         }
         .defaultSize(width: 1180, height: 800)
         .windowResizability(.contentMinSize)

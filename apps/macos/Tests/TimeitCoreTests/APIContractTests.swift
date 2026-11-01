@@ -37,3 +37,15 @@ func nativeHTTPContract() async throws {
     let identityRate = try await client.rate(base: "EUR", quote: "EUR", date: "2026-10-19")
     #expect(identityRate.rate == "1")
 }
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["TIMEIT_PUBLIC_API_TEST_URL"] != nil))
+func publicExchangeRateHTTPContract() async throws {
+    let url = URL(string: ProcessInfo.processInfo.environment["TIMEIT_PUBLIC_API_TEST_URL"]!)!
+    // The server fixture rejects any Authorization header, even if this client has a cloud token.
+    let client = APIClient(baseURL: url, token: "must-not-be-sent")
+    let rate = try await client.rate(base: "USD", quote: "EUR", date: "2026-10-18")
+    #expect(rate.rate == "0.89")
+    #expect(rate.requestedDate == "2026-10-18")
+    #expect(rate.observedDate == "2026-10-16")
+    #expect(rate.base == "USD" && rate.quote == "EUR")
+}

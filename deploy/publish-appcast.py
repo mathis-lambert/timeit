@@ -82,4 +82,4 @@ if __name__ == '__main__':
     payload = sys.stdin.buffer.read(8 * 1024 * 1024 + 1)
     if len(payload) > 8 * 1024 * 1024:
         raise SystemExit('Feed exceeds 8 MiB')
-    publish(Path(__file__).resolve().parent / 'updates', payload)
+    publish(Path(sys.argv[1]), payload)

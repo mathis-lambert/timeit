@@ -10,7 +10,8 @@
     "check": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "test:native": "node --import tsx test/native-contract.ts",
-    "migrate": "node --env-file-if-exists=.env --import tsx src/db/migrate.ts"
+    "migrate": "node --env-file-if-exists=.env --import tsx src/db/migrate.ts",
+    "test:public-native": "node --import tsx test/public-native-contract.ts"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.41",

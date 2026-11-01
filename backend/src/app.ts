@@ -5,7 +5,7 @@ import type { Config } from './config.js';
 import { authenticator } from './auth/authenticate.js';
 import { WorkspaceRepository } from './workspace/repository.js';
 import { SyncSchema, validateWorkspace, type SyncRequest } from './workspace/schema.js';
-import { ExchangeService } from './exchange/service.js';
+import { ExchangeService, ExchangeCapacityError } from './exchange/service.js';
 
 declare module 'fastify' { interface FastifyRequest { ownerID: string } }
 
@@ -17,6 +17,28 @@ const ExchangeQuery = Type.Object({
 
 export function buildApp(config: Config, pool?: pg.Pool, options: { logger?: boolean; fetcher?: typeof fetch } = {}) {
   const app = Fastify({ logger: options.logger ?? false, bodyLimit: 10 * 1024 * 1024 });
+  app.setErrorHandler<FastifyError>((error, request, reply) => {
+    if (error.validation) return reply.code(400).send({ error: 'Invalid request.', details: error.validation.map(item => ({ field: item.instancePath, message: item.message })) });
+    if (error.statusCode && error.statusCode < 500) return reply.code(error.statusCode).send({ error: error.message });
+    request.log.error({ err: error }, 'Request failed');
+    return reply.code(500).send({ error: 'Internal server error.' });
+  });
+  const exchange = new ExchangeService(pool, options.fetcher);
+  app.get<{ Querystring: Static<typeof ExchangeQuery> }>('/v1/exchange-rate', { schema: { querystring: ExchangeQuery } }, async (request, reply) => {
+    const { base, quote, date } = request.query;
+    if (date > new Date().toISOString().slice(0, 10)) return reply.code(400).send({ error: 'Future rates are unavailable.' });
+    try {
+      const rate = await exchange.get(base, quote, date);
+      reply.header('Cache-Control', 'public, max-age=3600');
+      return rate;
+    } catch (error) {
+      if (error instanceof ExchangeCapacityError) {
+        return reply.code(503).header('Retry-After', '10').send({ error: 'Exchange rate service is busy.' });
+      }
+      request.log.warn({ error: error instanceof Error ? error.message : 'provider failure' }, 'Exchange rate unavailable');
+      return reply.code(502).send({ error: 'Exchange rate unavailable. Original amounts are preserved.' });
+    }
+  });
   if (!config.cloudEnabled) {
     app.get('/health', async () => ({ status: 'ok', cloudAvailable: false }));
     app.all('/v1/*', async (_request, reply) => reply.code(501).send({
@@ -26,7 +48,6 @@ export function buildApp(config: Config, pool?: pg.Pool, options: { logger?: boo
   }
   if (!pool) throw new Error('Cloud requires a database pool.');
   const workspace = new WorkspaceRepository(pool);
-  const exchange = new ExchangeService(pool, options.fetcher);
   const authenticate = authenticator(config);
   app.get('/health', async () => { await pool.query('SELECT 1'); return { status: 'ok' }; });
   app.get('/v1/config', async () => ({ developmentAuth: config.developmentAuth, issuer: config.issuer ?? null, clientID: config.clientID ?? null }));
@@ -46,18 +67,6 @@ export function buildApp(config: Config, pool?: pg.Pool, options: { logger?: boo
       if (result.status === 'reused-id') return reply.code(422).send({ error: 'Mutation identifier already used for different content.' });
       return { revision: result.revision };
     });
-    protectedRoutes.get<{ Querystring: Static<typeof ExchangeQuery> }>('/v1/exchange-rate', { schema: { querystring: ExchangeQuery } }, async (request, reply) => {
-      const { base, quote, date } = request.query;
-      if (date > new Date().toISOString().slice(0, 10)) return reply.code(400).send({ error: 'Future rates are unavailable.' });
-      try { return await exchange.get(base, quote, date); }
-      catch (error) { request.log.warn({ error: error instanceof Error ? error.message : 'provider failure' }, 'Exchange rate unavailable'); return reply.code(502).send({ error: 'Exchange rate unavailable. Original amounts are preserved.' }); }
-    });
-  });
-  app.setErrorHandler<FastifyError>((error, request, reply) => {
-    if (error.validation) return reply.code(400).send({ error: 'Invalid request.', details: error.validation.map(item => ({ field: item.instancePath, message: item.message })) });
-    if (error.statusCode && error.statusCode < 500) return reply.code(error.statusCode).send({ error: error.message });
-    request.log.error({ err: error }, 'Request failed');
-    return reply.code(500).send({ error: 'Internal server error.' });
   });
   return app;
 }

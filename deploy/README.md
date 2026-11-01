@@ -8,7 +8,6 @@ GitHub Actions owns builds. The VPS only pulls immutable GHCR images and runs Co
 
 ```text
 compose.prod.yaml
-deploy.sh
 .env                 # deployed image digests, no application secrets
 .deploy.lock
 updates/             # persistent signed appcast, never replaced by deployment
@@ -16,7 +15,7 @@ updates/             # persistent signed appcast, never replaced by deployment
 
 The two images are `ghcr.io/mathis-lambert/timeit-api` and `ghcr.io/mathis-lambert/timeit-releases`. Both support linux/amd64 and linux/arm64. Nginx configuration is part of the releases image. Compose joins the existing external Traefik `proxy` network without changing shared infrastructure or GetAero.
 
-- `api.timeit.mathislambert.fr`: Fastify. `/health` returns 200 and `cloudAvailable: false`; `/v1/*` returns 501 `CLOUD_NOT_AVAILABLE`. No database or identity credentials are needed. Production refuses to enable the unfinished cloud service.
+- `api.timeit.mathislambert.fr`: Fastify. `/health` returns 200 and `cloudAvailable: false`; other `/v1/*` routes return 501 `CLOUD_NOT_AVAILABLE`. GET `/v1/exchange-rate` serves anonymous historical rates with a bounded memory cache. No database or identity credentials are needed. Production refuses to enable the unfinished cloud service.
 - `timeit.mathislambert.fr/updates/appcast.xml`: signed Sparkle feed, mounted read-only. Absent feeds return 404. `/healthz` is the health endpoint; other paths, including `/`, return 404 until the presentation site is built.
 
 ## CI and deployment
@@ -30,12 +29,12 @@ The `PROD` GitHub environment uses the same secret naming as GetAero:
 
 The repository variable `TIMEIT_AUTO_DEPLOY=true` enables automatic deployment. The SSH user must be able to write this application's directory and operate Docker. The registry login uses the workflow's short-lived `GITHUB_TOKEN`; its Docker credential directory is deleted at exit. Do not put a GitHub token in `.env`.
 
-CI uploads only `compose.prod.yaml` and `deploy.sh`. The script pulls both images before replacing containers, waits for health, and records the digests in `.env` only after success. On failure, an existing `.env` restores the preceding deployment. Public HTTPS health and the disabled cloud response are then checked.
+CI uploads only `compose.prod.yaml`. The deployment script is shell-quoted and executed over SSH; it is never stored on the VPS. The script pulls both images before replacing containers, waits for health, and records the digests in `.env` only after success. On failure, an existing `.env` restores the preceding deployment. Public HTTPS health and the disabled cloud response are then checked.
 
-For an intentional manual deployment or rollback, upload these same two runtime files and pipe an authorized GHCR read token into:
+For an intentional manual deployment or rollback, upload the Compose file and execute the repository script over SSH with an authorized GHCR read token on stdin. Its arguments are:
 
 ```sh
-bash deploy.sh \
+deploy/deploy.sh \
   ghcr.io/mathis-lambert/timeit-api@sha256:<digest> \
   ghcr.io/mathis-lambert/timeit-releases@sha256:<digest> \
   <github-user>
@@ -47,4 +46,4 @@ Never run builds or clone this repository on the VPS. Do not prune other applica
 
 Installer/ZIP publication and the signed appcast use the separate [macOS release workflow](../docs/RELEASES.md). The container workflow does not publish Mac releases. Serving the update URL and integrating Sparkle do not validate signed installation or replacement; that requires the signing/notarization workflow and two real signed releases.
 
-Publish one signed appcast atomically, preserving all three native Sparkle channels: omit `sparkle:channel` for stable, use `beta` or `nightly` for prereleases. Build numbers must increase globally across channels, including promotion of the same source revision from beta to stable. Never fabricate a feed before the first signed release. Use a Timeit-specific signing key. The atomic feed publisher reuses the existing `github-deploy` SSH identity, as requested; it uploads only `publish-appcast.py` and the signed feed, never a checkout.
+Publish one signed appcast atomically, preserving all three native Sparkle channels: omit `sparkle:channel` for stable, use `beta` or `nightly` for prereleases. Build numbers must increase globally across channels, including promotion of the same source revision from beta to stable. Never fabricate a feed before the first signed release. Use a Timeit-specific signing key. The atomic feed publisher reuses the existing `github-deploy` SSH identity, as requested; it executes `publish-appcast.py` over SSH from the CI checkout and streams the signed feed on stdin. Only the feed remains on disk. Retired helper files are removed by the container deployment.

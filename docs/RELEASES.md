@@ -69,8 +69,7 @@ signed bytes, refusing lost entries, altered archive signatures or reused build
 numbers. A delayed older release cannot displace a newer release. Clients verify
 both the feed signature and the archive signature.
 
-The VPS adds only `publish-appcast.py`, `.appcast.lock` and
-`updates/appcast.xml` to the existing runtime directory. Downloads stay on GitHub.
+The VPS adds only `.appcast.lock` and `updates/appcast.xml` to the existing runtime directory. The publisher executes over SSH without copying its source to the server. Downloads stay on GitHub.
 The website root remains reserved for the future presentation site.
 
 ## Acceptance

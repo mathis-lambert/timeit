@@ -10,7 +10,7 @@ test('production serves health but gates all cloud routes without a database or 
     assert.equal(health.statusCode, 200);
     assert.deepEqual(health.json(), { status: 'ok', cloudAvailable: false });
     for (const method of ['GET', 'PUT', 'POST', 'DELETE'] as const) {
-      for (const url of ['/v1/config', '/v1/me', '/v1/workspace', '/v1/exchange-rate']) {
+      for (const url of ['/v1/config', '/v1/me', '/v1/workspace']) {
         const response = await app.inject({ method, url });
         assert.equal(response.statusCode, 501);
         assert.equal(response.json().code, 'CLOUD_NOT_AVAILABLE');
