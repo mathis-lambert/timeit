@@ -40,7 +40,7 @@ sign "$FRAMEWORK"
 for bundle in "$APP/Contents/Resources/"*.bundle; do sign "$bundle"; done
 sign "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
-lipo -verify_arch arm64 x86_64 "$APP/Contents/MacOS/Timeit"
+lipo "$APP/Contents/MacOS/Timeit" -verify_arch arm64 x86_64
 xcrun dsymutil "$APP/Contents/MacOS/Timeit" -o "$OUT/Timeit.app.dSYM"
 xcrun dwarfdump --uuid "$APP/Contents/MacOS/Timeit" | awk '{print $2,$3}' > "$OUT/binary-uuids.txt"
 xcrun dwarfdump --uuid "$OUT/Timeit.app.dSYM" | awk '{print $2,$3}' > "$OUT/symbol-uuids.txt"
