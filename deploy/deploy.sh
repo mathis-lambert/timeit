@@ -8,7 +8,7 @@ registry_user="${3:?Missing registry user}"
 [[ "$releases_image" =~ ^ghcr\.io/mathis-lambert/timeit-releases@sha256:[a-f0-9]{64}$ ]]
 
 # Only runtime files live here. The feed survives every image deployment.
-install -d -m 755 updates
+if [[ ! -d updates ]]; then install -d -m 755 updates; fi
 exec 9>.deploy.lock
 flock 9
 work=$(mktemp -d)
