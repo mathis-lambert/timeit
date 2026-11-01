@@ -19,7 +19,7 @@ Not covered by automation: calendar drawing, drag, resize and their previews; ke
 
 ## Boundaries
 
-- Google and Apple sign-in and a production deployment have not been exercised.
+- Google and Apple sign-in have not been exercised. The production API is deployed with cloud routes disabled (501).
 - Local bundles are ad-hoc signed, not notarized.
 - The deployment target is macOS 26; the app has only been run on macOS 27.
 
@@ -29,3 +29,16 @@ Not covered by automation: calendar drawing, drag, resize and their previews; ke
 - Store tests call connection restoration, connection and synchronization while cloud is unavailable. Backend tests exercise every cloud route and multiple HTTP methods without PostgreSQL, expecting 501, and reject enabling cloud in production.
 - Live-window previews include Stable and Nightly update settings.
 - Still required before distributing: Developer ID signing, notarization, a single signed multi-channel appcast, globally increasing build numbers, and real update/restart tests between two signed builds. Changing a channel must never force an older build or discard a running timer.
+
+## Distribution pipeline checks (2026-11-01)
+
+- Universal release packaging built successfully on the local Xcode toolchain;
+  both Intel and Apple Silicon binaries declare macOS 26.0 as their minimum.
+- Generated dSYM UUIDs match both executable architectures.
+- The official Sparkle tools generated and verified a signed test feed, retaining
+  the beta entry when a newer stable entry was added. These local fixture builds
+  are not public releases and are only ad-hoc signed.
+- Publisher tests cover preserved channels, stale builds, conflicting duplicate
+  builds, atomic writes and idempotent retries. Workflow syntax is linted.
+- Apple signing/notarization and a real Sparkle install/relaunch remain pending
+  credential configuration and the first signed releases. See `RELEASES.md`.

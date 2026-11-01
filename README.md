@@ -35,7 +35,7 @@ bash scripts/build-macos.sh          # add "release" for an optimized build
 open artifacts/Timeit.app
 ```
 
-The script produces an ad-hoc signed local bundle in `artifacts/`. Sparkle is integrated, but update checks stay disabled in local builds. Developer ID signing, notarization and the first signed release still need to be configured.
+The script produces an ad-hoc signed local bundle in `artifacts/`. Sparkle is integrated, but update checks stay disabled in local builds. The separate [macOS release workflow](docs/RELEASES.md) produces Developer ID signed, notarized universal installers once its Apple and Sparkle credentials are configured.
 
 To look around without touching your data, choose **Explorer un exemple** on the welcome screen (or launch with `--demo`). The example workspace lives in memory only; **Revenir à mon espace** goes back to your real workspace.
 

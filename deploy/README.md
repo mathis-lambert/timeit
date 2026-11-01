@@ -45,6 +45,6 @@ Never run builds or clone this repository on the VPS. Do not prune other applica
 
 ## Mac releases are separate
 
-Installer/ZIP publication and the signed appcast will use GitHub Releases. The container workflow does not publish Mac releases. Serving the update URL and integrating Sparkle do not validate signed installation or replacement; that requires the signing/notarization workflow and two real signed releases.
+Installer/ZIP publication and the signed appcast use the separate [macOS release workflow](../docs/RELEASES.md). The container workflow does not publish Mac releases. Serving the update URL and integrating Sparkle do not validate signed installation or replacement; that requires the signing/notarization workflow and two real signed releases.
 
-Publish one signed appcast atomically, preserving all three native Sparkle channels: omit `sparkle:channel` for stable, use `beta` or `nightly` for prereleases. Build numbers must increase globally across channels, including promotion of the same source revision from beta to stable. Never fabricate a feed before the first signed release. Use a Timeit-specific signing key and a restricted feed publisher, separate from the container deployment credential.
+Publish one signed appcast atomically, preserving all three native Sparkle channels: omit `sparkle:channel` for stable, use `beta` or `nightly` for prereleases. Build numbers must increase globally across channels, including promotion of the same source revision from beta to stable. Never fabricate a feed before the first signed release. Use a Timeit-specific signing key. The atomic feed publisher reuses the existing `github-deploy` SSH identity, as requested; it uploads only `publish-appcast.py` and the signed feed, never a checkout.

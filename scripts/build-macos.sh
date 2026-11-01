@@ -2,9 +2,15 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIGURATION="${1:-debug}"
-swift build --package-path "$ROOT/apps/macos" --configuration "$CONFIGURATION"
-BIN="$(swift build --package-path "$ROOT/apps/macos" --configuration "$CONFIGURATION" --show-bin-path)"
+# Xcode compiles asset catalogs and gives Bundle.module its application resource layout.
+BUILD=(--package-path "$ROOT/apps/macos" --configuration "$CONFIGURATION" --build-system xcode)
+if [[ "${TIMEIT_DISTRIBUTION:-false}" == true ]]; then
+  BUILD+=(--arch arm64 --arch x86_64 -Xswiftc -g)
+fi
+swift build "${BUILD[@]}"
+BIN="$(swift build "${BUILD[@]}" --show-bin-path)"
 APP="$ROOT/artifacts/Timeit.app"
+rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN/Timeit" "$APP/Contents/MacOS/Timeit"
 cp "$ROOT/apps/macos/Info.plist" "$APP/Contents/Info.plist"
@@ -27,5 +33,7 @@ if [[ ! -f "$APP/Contents/Resources/AppIcon.icns" ]]; then
   swift "$ROOT/scripts/make-icon.swift" "$ROOT/artifacts/AppIcon.iconset"
   iconutil -c icns "$ROOT/artifacts/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 fi
-codesign --force --deep --sign - "$APP"
+if [[ "${TIMEIT_DISTRIBUTION:-false}" != true ]]; then
+  codesign --force --deep --sign - "$APP"
+fi
 printf '%s\n' "$APP"

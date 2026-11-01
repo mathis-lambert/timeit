@@ -1,0 +1,167 @@
+name: macOS releases
+on:
+  push:
+    tags: ['v*', 'nightly-*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag; leave empty for a nightly from main'
+        type: string
+        required: false
+permissions:
+  contents: read
+# All channels share a feed and a build counter. Never publish them concurrently.
+concurrency:
+  group: timeit-macos-distribution
+  cancel-in-progress: false
+jobs:
+  distribute:
+    runs-on: macos-26
+    timeout-minutes: 100
+    environment: PROD
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPLE_API_KEY_ID: ${{ vars.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ vars.APPLE_API_ISSUER_ID }}
+      SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+      BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Select trusted release source
+        id: select
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          PUSH_TAG: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          tag="$REQUESTED_TAG"
+          if [[ "$EVENT_NAME" == push ]]; then tag="$PUSH_TAG"; fi
+          if [[ -z "$tag" ]]; then
+            tag="nightly-$(git rev-parse HEAD)"
+            if ! git show-ref --verify --quiet "refs/tags/$tag"; then
+              git tag "$tag"
+              git push origin "refs/tags/$tag"
+            fi
+          fi
+          [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.[1-9][0-9]*)?$ || "$tag" =~ ^nightly-[0-9a-f]{40}$ ]]
+          revision=$(git rev-parse --verify "refs/tags/$tag^{commit}")
+          git merge-base --is-ancestor "$revision" origin/main
+          if [[ "$tag" == nightly-* ]]; then [[ "$tag" == "nightly-$revision" ]]; fi
+          git checkout --detach "$revision"
+          if [[ "$tag" != nightly-* ]]; then
+            [[ "$(git cat-file -t "refs/tags/$tag")" == tag ]] || { echo 'Stable/beta tags must be annotated with release notes.'; exit 1; }
+          fi
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          # A published release is immutable. A retry repairs only its feed publication.
+          gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --slurp > "$RUNNER_TEMP/releases.json"
+          state=$(python3 -c 'import json,sys; releases=sum(json.load(open(sys.argv[1])), []); matches=[r for r in releases if r["tag_name"] == sys.argv[2]]; print("draft" if matches and matches[0]["draft"] else "published" if matches else "new")' "$RUNNER_TEMP/releases.json" "$tag")
+          [[ "$state" != draft ]] || { echo 'Inspect and remove the incomplete draft before retrying.'; exit 1; }
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+      - name: Check release source
+        if: steps.select.outputs.state == 'new'
+        run: |
+          swift format lint --recursive apps/macos/Sources apps/macos/Tests apps/macos/Package.swift scripts/make-icon.swift
+          swift test --package-path apps/macos
+          python3 -m unittest discover -s scripts/tests
+          bash -n scripts/*.sh
+      - name: Resolve Sparkle tools
+        run: swift package --package-path apps/macos resolve
+      - name: Configure signing files
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SPARKLE_PUBLIC_ED_KEY" && test -n "$SPARKLE_PRIVATE_KEY"
+          umask 077
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/timeit-sparkle-key"
+          echo "SPARKLE_PRIVATE_KEY_FILE=$RUNNER_TEMP/timeit-sparkle-key" >> "$GITHUB_ENV"
+          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/timeit-notary.p8" >> "$GITHUB_ENV"
+          echo "SIGNING_KEYCHAIN=$RUNNER_TEMP/timeit-signing.keychain-db" >> "$GITHUB_ENV"
+      - name: Import Apple signing credentials
+        if: steps.select.outputs.state == 'new'
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CERTIFICATE" && test -n "$API_PRIVATE_KEY" && test -n "$APPLE_TEAM_ID"
+          test -n "$APPLE_API_KEY_ID" && test -n "$APPLE_API_ISSUER_ID"
+          umask 077
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/timeit-signing.p12"
+          printf '%s' "$API_PRIVATE_KEY" > "$APPLE_API_KEY_PATH"
+          password=$(openssl rand -hex 32)
+          echo "::add-mask::$password"
+          security create-keychain -p "$password" "$SIGNING_KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$SIGNING_KEYCHAIN"
+          security unlock-keychain -p "$password" "$SIGNING_KEYCHAIN"
+          security import "$RUNNER_TEMP/timeit-signing.p12" -P "$CERTIFICATE_PASSWORD" -t cert -f pkcs12 -k "$SIGNING_KEYCHAIN" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -k "$password" "$SIGNING_KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$SIGNING_KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
+          rm "$RUNNER_TEMP/timeit-signing.p12"
+      - name: Sign and notarize universal app and installer
+        if: steps.select.outputs.state == 'new'
+        id: package
+        run: bash scripts/distribute-macos.sh
+      - name: Publish completed GitHub release
+        if: steps.select.outputs.state == 'new'
+        env:
+          OUTPUT: ${{ steps.package.outputs.output }}
+          CHANNEL: ${{ steps.package.outputs.channel }}
+        run: |
+          set -euo pipefail
+          if [[ "$CHANNEL" == nightly ]]; then
+            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$RELEASE_TAG" --jq .body > "$RUNNER_TEMP/notes.md"
+          else
+            [[ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" == tag ]] || { echo 'Stable/beta tags must be annotated with release notes.'; exit 1; }
+            git for-each-ref --format='%(contents)' "refs/tags/$RELEASE_TAG" > "$RUNNER_TEMP/notes.md"
+            test -s "$RUNNER_TEMP/notes.md"
+          fi
+          args=(--draft --verify-tag --title "Timeit $RELEASE_TAG" --notes-file "$RUNNER_TEMP/notes.md")
+          if [[ "$CHANNEL" != stable ]]; then args+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" "${args[@]}"
+          gh release upload "$RELEASE_TAG" "$OUTPUT/Timeit-$RELEASE_TAG.zip" "$OUTPUT/Timeit-$RELEASE_TAG.dmg" \
+            "$OUTPUT/Timeit-$RELEASE_TAG.dSYM.zip" "$OUTPUT/SHA256SUMS" "$OUTPUT/release.json" \
+            "$OUTPUT/app-notary.json" "$OUTPUT/dmg-notary.json"
+          latest=false
+          if [[ "$CHANNEL" == stable ]]; then latest=true; fi
+          gh release edit "$RELEASE_TAG" --draft=false --latest="$latest"
+      - name: Configure feed publisher
+        env:
+          DEPLOY_KEY: ${{ secrets.ML_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.ML_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          test -n "$DEPLOY_KEY" && test -n "$KNOWN_HOSTS"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Publish signed multi-channel appcast
+        env:
+          DEPLOY_HOST: ${{ secrets.ML_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.ML_DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.ML_DEPLOY_PORT }}
+        run: bash scripts/publish-macos-feed.sh
+      - name: Preserve notarization diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: notarization-${{ github.run_number }}-${{ github.run_attempt }}
+          path: artifacts/distribution/**/*notary*.json
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Remove signing credentials
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/timeit-signing.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/timeit-signing.keychain-db"
+          fi
+          rm -f "$RUNNER_TEMP/timeit-signing.p12" "$RUNNER_TEMP/timeit-notary.p8" "$RUNNER_TEMP/timeit-sparkle-key" ~/.ssh/id_ed25519

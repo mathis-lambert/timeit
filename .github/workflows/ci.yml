@@ -31,7 +31,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check && npm test && npm run build
-      - run: bash -n deploy/deploy.sh scripts/build-macos.sh
+      - run: bash -n deploy/deploy.sh scripts/*.sh
+      - run: python3 -m unittest discover -s scripts/tests
   macos:
     runs-on: macos-26
     steps:

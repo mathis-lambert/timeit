@@ -2,6 +2,7 @@
 node_modules/
 dist/
 coverage/
+__pycache__/
 .build/
 .swiftpm/
 DerivedData/
