@@ -133,7 +133,7 @@ jobs:
           curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 https://api.timeit.mathislambert.fr/health | jq -e '.status == "ok" and .cloudAvailable == false'
           test "$(curl --silent --show-error -o /tmp/cloud.json -w '%{http_code}' https://api.timeit.mathislambert.fr/v1/workspace)" = 501
           jq -e '.code == "CLOUD_NOT_AVAILABLE"' /tmp/cloud.json
-          curl --fail --silent --show-error https://timeit.mathislambert.fr/healthz
+          curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 https://timeit.mathislambert.fr/healthz
           curl --fail --silent --show-error --retry 4 --retry-all-errors --retry-delay 3 \
             'https://api.timeit.mathislambert.fr/v1/exchange-rate?base=USD&quote=EUR&date=2026-10-16' | \
             jq -e '.base == "USD" and .quote == "EUR" and .requestedDate == "2026-10-16" and (.rate | tonumber) > 0'
