@@ -10,7 +10,7 @@ VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' apps/mac
 CHANNEL=stable
 if [[ "$RELEASE_TAG" == "v$VERSION" ]]; then
   CHANNEL=stable
-elif [[ "$RELEASE_TAG" =~ ^v${VERSION//./\.}-beta\.[1-9][0-9]*$ ]]; then
+elif [[ "$RELEASE_TAG" == "v$VERSION-beta."* && "${RELEASE_TAG##*-beta.}" =~ ^[1-9][0-9]*$ ]]; then
   CHANNEL=beta
 elif [[ "$RELEASE_TAG" == "nightly-$(git rev-parse HEAD)" ]]; then
   CHANNEL=nightly
