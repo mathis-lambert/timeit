@@ -2,9 +2,21 @@
 
 ## Boundaries
 
+The shipped app is currently local-only. Cloud connection, synchronization and cloud backups are unavailable: Settings says so, no connection is restored and no background sync starts. The future endpoint is `https://api.timeit.mathislambert.fr`. The deployed API returns HTTP 501 with `CLOUD_NOT_AVAILABLE` on `/v1/*`; `/health` reports availability without connecting to PostgreSQL. `CLOUD_ENABLED=true` is permitted only for local backend development/tests and rejected in production. The contracts below describe the existing, unreleased cloud implementation.
+
 The Mac owns immediate interaction and local persistence. `TimeitCore` contains portable models, deterministic calculations and the HTTP contract. `TimeitApp` owns platform services and observable UI state. The API owns authenticated access, shared persistence, optimistic concurrency and historical exchange-rate observations. PostgreSQL never accepts a user identity from request bodies; ownership comes from the verified token.
 
 There are two runtime components: the native app and one HTTP service. No microservices, message broker, generic repository layer or placeholder iOS implementation.
+
+## Application identity and updates
+
+Stable, beta and nightly are subscriptions, not separate apps. Every release is `Timeit.app`, bundle ID `fr.mathislambert.Timeit`, with the same Application Support directory, preferences and Keychain identity. Never suffix these identities with a release channel.
+
+Sparkle reads one signed feed at `https://timeit.mathislambert.fr/updates/appcast.xml`. Stable items have no channel; prereleases use Sparkle's native `beta` and `nightly` channels. The Settings subscription admits stable only, stable + beta, or all three. First launch defaults to the downloaded release's channel; the subscription survives every subsequent update. Changing the subscription does not migrate, copy or reset data.
+
+All releases must use globally increasing numeric build numbers across every channel. Returning to Stable waits for a stable build newer than the installed build; there is no downgrade or custom version comparator. Database migrations must preserve data across this single release lineage. Never publish a nightly with a schema change that a later stable from an older branch cannot read.
+
+Local builds do not start Sparkle. Official packaging must supply `TimeitUpdatesEnabled=true`, the Timeit Ed25519 public key in `SUPublicEDKey`, and `TimeitReleaseChannel`. Signed feeds and archives are required. The API is not involved in update discovery or installation.
 
 ## Local persistence
 

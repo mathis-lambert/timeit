@@ -15,8 +15,16 @@ const ExchangeQuery = Type.Object({
   date: Type.String({ format: 'date' }),
 }, { additionalProperties: false });
 
-export function buildApp(config: Config, pool: pg.Pool, options: { logger?: boolean; fetcher?: typeof fetch } = {}) {
+export function buildApp(config: Config, pool?: pg.Pool, options: { logger?: boolean; fetcher?: typeof fetch } = {}) {
   const app = Fastify({ logger: options.logger ?? false, bodyLimit: 10 * 1024 * 1024 });
+  if (!config.cloudEnabled) {
+    app.get('/health', async () => ({ status: 'ok', cloudAvailable: false }));
+    app.all('/v1/*', async (_request, reply) => reply.code(501).send({
+      error: 'Not implemented yet', code: 'CLOUD_NOT_AVAILABLE',
+    }));
+    return app;
+  }
+  if (!pool) throw new Error('Cloud requires a database pool.');
   const workspace = new WorkspaceRepository(pool);
   const exchange = new ExchangeService(pool, options.fetcher);
   const authenticate = authenticator(config);

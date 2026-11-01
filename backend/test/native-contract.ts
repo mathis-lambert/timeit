@@ -11,7 +11,7 @@ const schema = 'native_' + randomUUID().replaceAll('-', '');
 const admin = new pg.Pool({ connectionString: databaseURL });
 await admin.query(`CREATE SCHEMA ${schema}`);
 const pool = new pg.Pool({ connectionString: databaseURL, options: `-c search_path=${schema}` });
-const app = buildApp({ host: '127.0.0.1', port: 0, databaseURL, developmentAuth: true }, pool);
+const app = buildApp({ cloudEnabled: true, host: '127.0.0.1', port: 0, databaseURL, developmentAuth: true }, pool);
 try {
   await migrate(pool);
   const address = await app.listen({ host: '127.0.0.1', port: 0 });

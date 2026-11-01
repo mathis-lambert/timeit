@@ -11,6 +11,7 @@ extension KeyboardShortcuts.Name {
 struct TimeitApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var store: AppStore
+    @State private var updater = AppUpdater()
     init() {
         let store = AppStore()
         _store = State(initialValue: store)
@@ -21,11 +22,14 @@ struct TimeitApp: App {
         Window("Timeit", id: "main") {
             ContentView(store: store)
                 .tint(Theme.accent)
-                .task { await store.restoreConnection() }
+                .task { updater.start() }
         }
         .defaultSize(width: 1180, height: 800)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Rechercher des mises à jour…", action: updater.check).disabled(!updater.canCheck)
+            }
             TrackingCommands(store: store)
             CommandGroup(replacing: .newItem) {
                 Button("Nouvelle session…") { store.entryEditor = EntryEditorRequest() }.keyboardShortcut(.newSession)
@@ -40,7 +44,7 @@ struct TimeitApp: App {
         MenuBarExtra("Timeit", systemImage: store.running == nil ? "circle.dotted" : "record.circle") {
             MenuBarView(store: store).tint(Theme.accent)
         }.menuBarExtraStyle(.window)
-        Settings { SettingsView(store: store).tint(Theme.accent) }
+        Settings { SettingsView(store: store, updater: updater).tint(Theme.accent) }
     }
 }
 
@@ -58,8 +62,6 @@ private struct TrackingCommands: Commands {
             }
             .keyboardShortcut(.palette)
             Divider()
-            Button("Synchroniser") { Task { await store.synchronize() } }.keyboardShortcut(.synchronize).disabled(
-                !store.connected)
             Button("Revenir à aujourd’hui") { store.anchorDate = .now }.keyboardShortcut(.today)
         }
     }

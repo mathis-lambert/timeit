@@ -5,6 +5,7 @@ import TimeitCore
 
 struct SettingsView: View {
     @Bindable var store: AppStore
+    @Bindable var updater: AppUpdater
     @State private var name = ""
     @State private var currency = "EUR"
     @State private var goal = 35
@@ -39,36 +40,16 @@ struct SettingsView: View {
                 }
             }.formStyle(.grouped).tabItem { Label("Compte", systemImage: "person.crop.circle") }
             Form {
-                Section {
-                    TextField("Adresse du serveur", text: $store.serverURL).disabled(
-                        store.connected || store.isConnecting)
-                    HStack {
-                        Label(store.syncLabel, systemImage: store.connected ? "checkmark.icloud" : "icloud")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if store.isConnecting {
-                            ProgressView().controlSize(.small)
-                        } else if store.connected {
-                            Button("Synchroniser") { Task { await store.synchronize() } }.disabled(store.isSyncing)
-                            Button("Déconnecter") { store.disconnect() }
-                        } else {
-                            Button("Connecter mon compte") { Task { await store.connect() } }.buttonStyle(
-                                .glassProminent
-                            ).disabled(store.isDemo)
-                        }
-                    }
-                } header: {
-                    Text("Synchronisation")
-                } footer: {
+                Section("Synchronisation et sauvegarde cloud") {
+                    Label("Pas encore disponible", systemImage: "icloud.slash")
                     Text(
-                        store.isDemo
-                            ? "Quittez l’espace d’exemple pour connecter votre compte."
-                            : "La connexion s’ouvre dans le navigateur sécurisé du système. Les fournisseurs Google et Apple sont gérés par votre serveur. Votre travail reste disponible hors ligne."
+                        "La connexion à un compte, la synchronisation entre Macs et la sauvegarde cloud ne sont pas encore disponibles. Aucune donnée n’est envoyée à un serveur."
                     )
+                    .foregroundStyle(.secondary)
                 }
                 Section("Vos données") {
                     Text(
-                        "Les sessions sont sauvegardées immédiatement dans la base SQLite de ce Mac. En cas de conflit, Timeit conserve une copie locale de la version remplacée."
+                        "Vos sessions sont enregistrées sur ce Mac. Pensez à sauvegarder ce dossier, par exemple avec Time Machine."
                     ).foregroundStyle(.secondary)
                     Button("Ouvrir le dossier des données") {
                         if let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
@@ -79,6 +60,8 @@ struct SettingsView: View {
                     }
                 }
             }.formStyle(.grouped).tabItem { Label("Cloud", systemImage: "icloud") }
+            UpdateSettingsView(updater: updater)
+                .tabItem { Label("Mises à jour", systemImage: "arrow.triangle.2.circlepath") }
             Form {
                 Section("Au quotidien") {
                     Toggle("Ouvrir Timeit à la connexion", isOn: $launchAtLogin).onChange(of: launchAtLogin) {

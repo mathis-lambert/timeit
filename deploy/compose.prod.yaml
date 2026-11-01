@@ -1,0 +1,48 @@
+name: timeit
+services:
+  api:
+    image: ${TIMEIT_API_IMAGE:?Set TIMEIT_API_IMAGE}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      CLOUD_ENABLED: "false"
+      DEV_AUTH: "false"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:4318/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.timeit-api.rule: Host(`api.timeit.mathislambert.fr`)
+      traefik.http.routers.timeit-api.entrypoints: websecure
+      traefik.http.routers.timeit-api.tls: "true"
+      traefik.http.routers.timeit-api.tls.certresolver: letsencrypt
+      traefik.http.services.timeit-api.loadbalancer.server.port: "4318"
+    networks: [proxy]
+  releases:
+    image: ${TIMEIT_RELEASES_IMAGE:?Set TIMEIT_RELEASES_IMAGE}
+    restart: unless-stopped
+    volumes:
+      - ./updates:/srv/updates:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/healthz]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.timeit-releases.rule: Host(`timeit.mathislambert.fr`)
+      traefik.http.routers.timeit-releases.entrypoints: websecure
+      traefik.http.routers.timeit-releases.tls: "true"
+      traefik.http.routers.timeit-releases.tls.certresolver: letsencrypt
+      traefik.http.services.timeit-releases.loadbalancer.server.port: "80"
+    networks: [proxy]
+networks:
+  proxy:
+    external: true

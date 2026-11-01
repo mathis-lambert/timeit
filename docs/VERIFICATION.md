@@ -22,3 +22,10 @@ Not covered by automation: calendar drawing, drag, resize and their previews; ke
 - Google and Apple sign-in and a production deployment have not been exercised.
 - Local bundles are ad-hoc signed, not notarized.
 - The deployment target is macOS 26; the app has only been run on macOS 27.
+
+## Channel and cloud availability checks (2026-11-01)
+
+- Update tests cover native channel eligibility, subscription persistence across release metadata changes, unchanged workspace data, and disabled/invalid updater configuration. Local builds never start Sparkle.
+- Store tests call connection restoration, connection and synchronization while cloud is unavailable. Backend tests exercise every cloud route and multiple HTTP methods without PostgreSQL, expecting 501, and reject enabling cloud in production.
+- Live-window previews include Stable and Nightly update settings.
+- Still required before distributing: Developer ID signing, notarization, a single signed multi-channel appcast, globally increasing build numbers, and real update/restart tests between two signed builds. Changing a channel must never force an older build or discard a running timer.

@@ -235,7 +235,7 @@ private struct WelcomeView: View {
             VStack(spacing: 6) {
                 Text("Bienvenue dans Timeit").font(.title2.weight(.semibold))
                 Text(
-                    "Créez un projet pour lancer votre premier timer.\nVos données restent sur ce Mac ; la synchronisation est facultative."
+                    "Créez un projet pour lancer votre premier timer.\nVos données sont enregistrées sur ce Mac."
                 )
                 .foregroundStyle(.secondary).multilineTextAlignment(.center)
             }

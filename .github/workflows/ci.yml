@@ -1,5 +1,14 @@
-name: Checks
-on: [push, pull_request]
+name: CI and deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: timeit-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -15,18 +24,102 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://timeit:timeit@127.0.0.1:5432/timeit
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run check
-      - run: npm test
-      - run: npm run build
+      - run: npm run check && npm test && npm run build
+      - run: bash -n deploy/deploy.sh scripts/build-macos.sh
   macos:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: swift --version
+      - run: swift format lint --recursive apps/macos/Sources apps/macos/Tests apps/macos/Package.swift scripts/make-icon.swift
       - run: swift test --package-path apps/macos
+  publish:
+    needs: [backend, macos]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api: ghcr.io/mathis-lambert/timeit-api@${{ steps.api.outputs.digest }}
+      releases: ghcr.io/mathis-lambert/timeit-releases@${{ steps.releases.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: api
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/mathis-lambert/timeit-api:sha-${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/mathis-lambert/timeit
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - id: releases
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: deploy/releases.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/mathis-lambert/timeit-releases:sha-${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/mathis-lambert/timeit
+          cache-from: type=gha,scope=releases
+          cache-to: type=gha,scope=releases,mode=max
+  deploy:
+    needs: publish
+    if: vars.TIMEIT_AUTO_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: PROD
+      url: https://timeit.mathislambert.fr
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.ML_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.ML_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          test -n "$DEPLOY_KEY" && test -n "$KNOWN_HOSTS"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Deploy verified image digests
+        env:
+          DEPLOY_HOST: ${{ secrets.ML_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.ML_DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.ML_DEPLOY_PORT }}
+          API_IMAGE: ${{ needs.publish.outputs.api }}
+          RELEASES_IMAGE: ${{ needs.publish.outputs.releases }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER"
+          port="${DEPLOY_PORT:-22}"
+          target="$DEPLOY_USER@$DEPLOY_HOST"
+          destination=/opt/mathislambert.fr/applications/timeit
+          scp -P "$port" -o BatchMode=yes -o StrictHostKeyChecking=yes deploy/compose.prod.yaml deploy/deploy.sh "$target:$destination/"
+          printf '%s\n' "$GHCR_TOKEN" | ssh -p "$port" -o BatchMode=yes -o StrictHostKeyChecking=yes "$target" \
+            "bash $destination/deploy.sh '$API_IMAGE' '$RELEASES_IMAGE' '$GITHUB_ACTOR'"
+      - name: Check public endpoints
+        run: |
+          curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 https://api.timeit.mathislambert.fr/health | jq -e '.status == "ok" and .cloudAvailable == false'
+          test "$(curl --silent --show-error -o /tmp/cloud.json -w '%{http_code}' https://api.timeit.mathislambert.fr/v1/workspace)" = 501
+          jq -e '.code == "CLOUD_NOT_AVAILABLE"' /tmp/cloud.json
+          curl --fail --silent --show-error https://timeit.mathislambert.fr/healthz

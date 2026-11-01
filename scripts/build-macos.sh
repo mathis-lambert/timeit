@@ -5,9 +5,11 @@ CONFIGURATION="${1:-debug}"
 swift build --package-path "$ROOT/apps/macos" --configuration "$CONFIGURATION"
 BIN="$(swift build --package-path "$ROOT/apps/macos" --configuration "$CONFIGURATION" --show-bin-path)"
 APP="$ROOT/artifacts/Timeit.app"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN/Timeit" "$APP/Contents/MacOS/Timeit"
 cp "$ROOT/apps/macos/Info.plist" "$APP/Contents/Info.plist"
+SPARKLE="$ROOT/apps/macos/.build/artifacts/sparkle/Sparkle"
+ditto "$SPARKLE/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 for bundle in "$BIN/"*.bundle; do
   if [[ -d "$bundle" ]]; then cp -R "$bundle" "$APP/Contents/Resources/"; fi
 done
@@ -19,6 +21,7 @@ for dependency in GRDB.swift AppAuth-iOS Valet; do
   install -m 644 "$ROOT/apps/macos/.build/checkouts/$dependency/LICENSE" "$LICENSES/$dependency.txt"
 done
 install -m 644 "$ROOT/apps/macos/.build/checkouts/KeyboardShortcuts/license" "$LICENSES/KeyboardShortcuts.txt"
+install -m 644 "$SPARKLE/LICENSE" "$LICENSES/Sparkle.txt"
 if [[ ! -f "$APP/Contents/Resources/AppIcon.icns" ]]; then
   mkdir -p "$ROOT/artifacts/AppIcon.iconset"
   swift "$ROOT/scripts/make-icon.swift" "$ROOT/artifacts/AppIcon.iconset"

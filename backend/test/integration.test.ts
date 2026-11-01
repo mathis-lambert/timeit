@@ -21,7 +21,7 @@ test('workspace, authentication and FX integration against PostgreSQL', { skip: 
   const host = await identityServer.listen({ host: '127.0.0.1', port: 0 });
   const issuer = host + '/realm';
   let providerCalls = 0;
-  const app = buildApp({ host: '127.0.0.1', port: 0, databaseURL: process.env.TEST_DATABASE_URL!, developmentAuth: false, issuer, audience: 'timeit-api', clientID: 'timeit-macos' }, pool, {
+  const app = buildApp({ cloudEnabled: true, host: '127.0.0.1', port: 0, databaseURL: process.env.TEST_DATABASE_URL!, developmentAuth: false, issuer, audience: 'timeit-api', clientID: 'timeit-macos' }, pool, {
     fetcher: async input => {
       providerCalls++;
       const url = String(input);

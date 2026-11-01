@@ -39,6 +39,15 @@ struct LiveWindowTests {
             #expect(capture.terminationStatus == 0)
         }
         let windowSize = NSSize(width: 1280, height: 860)
+        let suite = "TimeitPreview.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let updater = AppUpdater(defaults: defaults, info: [:])
+        try await render(
+            UpdateSettingsView(updater: updater), name: "updates-stable", size: NSSize(width: 570, height: 470))
+        updater.select(.nightly)
+        try await render(
+            UpdateSettingsView(updater: updater), name: "updates-nightly", size: NSSize(width: 570, height: 470))
         try await render(ContentView(store: store), name: "dashboard-dark", size: windowSize)
         try await render(ContentView(store: store), name: "dashboard-light", size: windowSize, appearance: .aqua)
         store.screen = .calendar

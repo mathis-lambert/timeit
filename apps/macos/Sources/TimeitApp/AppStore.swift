@@ -41,6 +41,7 @@ struct ProjectEditorRequest: Identifiable {
 
 @MainActor @Observable
 final class AppStore {
+    static let cloudAvailable = false
     private(set) var state = LocalState()
     private(set) var isDemo = false
     private(set) var startupError: String?
@@ -60,7 +61,7 @@ final class AppStore {
     var launcherQuery = ""
     var timerTitle = ""
     var timerProjectID: UUID?
-    var serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://127.0.0.1:4318"
+    var serverURL = "https://api.timeit.mathislambert.fr"
     private var database: LocalDatabase?
     private var realDatabase: LocalDatabase?
     private var deletedEntries: [TimeEntry] = []
@@ -331,6 +332,7 @@ final class AppStore {
         return APIClient(baseURL: url, token: token)
     }
     func restoreConnection() async {
+        guard Self.cloudAvailable else { return }
         if maintenanceTask == nil {
             maintenanceTask = Task { [weak self] in
                 while !Task.isCancelled {
@@ -343,6 +345,7 @@ final class AppStore {
         await connect(interactive: false)
     }
     func connect(interactive: Bool = true) async {
+        guard Self.cloudAvailable else { return }
         guard !isDemo, !isConnecting else { return }
         isConnecting = true
         defer { isConnecting = false }
@@ -396,6 +399,7 @@ final class AppStore {
         }
     }
     func synchronize() async {
+        guard Self.cloudAvailable else { return }
         guard connected, !isDemo, !isSyncing, conflict == nil, let database else { return }
         let generation = connectionGeneration
         isSyncing = true

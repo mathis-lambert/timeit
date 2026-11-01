@@ -1,6 +1,6 @@
 # Timeit
 
-A native macOS time tracker for independent professionals: a SwiftUI window and menu-bar companion, offline SQLite storage, clients and projects, an editable weekly calendar, historical hourly rates, multi-currency estimates with separate social contributions and income tax, and CSV/PDF exports. An optional TypeScript API synchronizes the workspace across Macs.
+A native macOS time tracker for independent professionals: a SwiftUI window and menu-bar companion, offline SQLite storage, clients and projects, an editable weekly calendar, historical hourly rates, multi-currency estimates with separate social contributions and income tax, and CSV/PDF exports. The TypeScript sync API is under development; cloud connection, synchronization and cloud backups are not yet available in the app.
 
 ![Dashboard](docs/screenshots/dashboard-dark.png)
 
@@ -35,7 +35,7 @@ bash scripts/build-macos.sh          # add "release" for an optimized build
 open artifacts/Timeit.app
 ```
 
-The script produces an ad-hoc signed local bundle in `artifacts/`. Developer ID signing, notarization and automatic updates are not configured yet.
+The script produces an ad-hoc signed local bundle in `artifacts/`. Sparkle is integrated, but update checks stay disabled in local builds. Developer ID signing, notarization and the first signed release still need to be configured.
 
 To look around without touching your data, choose **Explorer un exemple** on the welcome screen (or launch with `--demo`). The example workspace lives in memory only; **Revenir à mon espace** goes back to your real workspace.
 
@@ -63,11 +63,20 @@ cp backend/.env.example backend/.env
 npm run dev
 ```
 
-The API listens on `http://127.0.0.1:4318`. In the app, open Settings → Cloud and connect to that address. The local development identity needs no account and is refused outside loopback or in production. Migrations run before the server starts. The Compose credentials are for local development only.
+The API listens on `http://127.0.0.1:4318`. By default `/v1/*` returns `501 Not implemented yet`; no database is opened. For backend development only, set `CLOUD_ENABLED=true` in `backend/.env` to exercise the unreleased routes. The local development identity is refused outside loopback or in production. The Mac app keeps Cloud unavailable and never connects. The Compose credentials are for local development only.
 
-## Production identity and hosting
+## Updates and hosting
 
-The API verifies Keycloak access tokens against its JWKS, issuer and audience. Set `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_CLIENT_ID`, `DATABASE_URL`, `NODE_ENV=production` and `DEV_AUTH=false`. Register a public native OIDC client (Authorization Code + PKCE) with this redirect URI:
+Timeit is one application with one database and Keychain identity across Stable, Beta and Nightly. Settings → Mises à jour selects a subscription using native Sparkle channels in one signed feed. Beta also receives stable releases; Nightly receives all releases. Returning to Stable waits for a newer stable build and never downgrades data.
+
+- `https://timeit.mathislambert.fr/updates/appcast.xml`: update feed; the root is reserved for a future presentation site.
+- `https://api.timeit.mathislambert.fr`: deployed API with cloud routes disabled.
+
+Successful checks on `main` publish the API and release-server images to GHCR. The VPS runs only Compose, pinned image digests and persistent update files; no source checkout or builds are needed there. See `deploy/README.md` for deployment and `docs/ARCHITECTURE.md` for channel and data rules.
+
+## Future production identity
+
+The unreleased cloud implementation verifies Keycloak access tokens against its JWKS, issuer and audience. Set `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_CLIENT_ID`, `DATABASE_URL`, `NODE_ENV=production` and `DEV_AUTH=false`. Register a public native OIDC client (Authorization Code + PKCE) with this redirect URI:
 
 ```text
 fr.mathislambert.timeit:/oauth/callback
@@ -75,7 +84,7 @@ fr.mathislambert.timeit:/oauth/callback
 
 The app uses AppAuth for discovery, PKCE and refresh, and stores the auth state in the Keychain through Valet. Google and Apple sign-in are configured on the identity server; they have not been verified against a live deployment yet.
 
-`backend/Dockerfile` builds the API from the repository root. Run it behind HTTPS with a dedicated PostgreSQL database and role, and set up backups before opening registrations.
+`backend/Dockerfile` builds the API from the repository root. The gated deployment needs no database. Before enabling cloud, provision a dedicated PostgreSQL database and role, configure identity and backups, and validate the service. Production currently rejects `CLOUD_ENABLED=true`.
 
 ## Checks
 

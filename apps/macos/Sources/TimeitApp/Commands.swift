@@ -3,14 +3,13 @@ import TimeitCore
 
 /// In-app shortcuts, shared by the menus, the command palette and Settings.
 enum AppShortcut: CaseIterable {
-    case newSession, newProject, toggleTimer, palette, synchronize, today, undoDelete
+    case newSession, newProject, toggleTimer, palette, today, undoDelete
 
     var key: KeyEquivalent {
         switch self {
         case .newSession, .newProject: "n"
         case .toggleTimer: .return
         case .palette: "k"
-        case .synchronize: "r"
         case .today: "t"
         case .undoDelete: "z"
         }
@@ -22,7 +21,6 @@ enum AppShortcut: CaseIterable {
         case .newProject: "⌘⇧N"
         case .toggleTimer: "⌘↩"
         case .palette: "⌘K"
-        case .synchronize: "⌘R"
         case .today: "⌘T"
         case .undoDelete: "⌘Z"
         }
@@ -33,7 +31,6 @@ enum AppShortcut: CaseIterable {
         case .newProject: "Nouveau projet"
         case .toggleTimer: "Démarrer / arrêter"
         case .palette: "Palette de commandes"
-        case .synchronize: "Synchroniser"
         case .today: "Revenir à aujourd’hui"
         case .undoDelete: "Annuler une suppression"
         }
