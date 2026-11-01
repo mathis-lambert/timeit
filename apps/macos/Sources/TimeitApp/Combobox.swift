@@ -77,7 +77,7 @@ struct ComboboxList<ID: Hashable>: View {
     }
 
     var body: some View {
-        let matches = options.indices.filter { matches(options[$0]) }
+        let matches = options.indices.filter { self.matches(options[$0]) }
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         let offersCreate =
             create != nil && !trimmed.isEmpty

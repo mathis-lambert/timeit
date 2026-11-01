@@ -6,7 +6,7 @@ struct UpdateSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Canal", selection: Binding(get: { updater.channel }, set: updater.select)) {
+                Picker("Canal", selection: Binding(get: { updater.channel }, set: { updater.select($0) })) {
                     ForEach(UpdateChannel.allCases) { Text($0.title).tag($0) }
                 }
                 .disabled(updater.sessionInProgress)
@@ -32,7 +32,7 @@ struct UpdateSettingsView: View {
                     Toggle(
                         "Rechercher automatiquement",
                         isOn: Binding(
-                            get: { updater.automaticallyChecks }, set: updater.setAutomaticChecks))
+                            get: { updater.automaticallyChecks }, set: { updater.setAutomaticChecks($0) }))
                     if let date = updater.lastCheck {
                         LabeledContent(
                             "Dernière recherche", value: date.formatted(date: .abbreviated, time: .shortened))
